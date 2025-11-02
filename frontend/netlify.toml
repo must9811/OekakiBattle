@@ -1,0 +1,5 @@
+﻿[build]
+  command = "npm run build"
+  publish = ".next"
+
+# Next.js on Netlify Runtime auto-detected; this is minimal.
