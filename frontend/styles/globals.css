@@ -10,6 +10,8 @@ body{ margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-se
 .button.ghost{ background:transparent; border:1px solid var(--accent); color:var(--accent) }
 .button:disabled{ opacity:.6; cursor:not-allowed }
 .input{ background:#0b1126; border:1px solid rgba(255,255,255,.12); color:var(--text); border-radius:8px; padding:.5rem .7rem }
+.input.invalid{ border-color:#ff6b6b }
+.fieldError{ color:#ff6b6b; font-size:.85rem }
 .label{ display:grid; gap:6px }
 .hstack{ display:flex; gap:8px; align-items:center }
 .title{ font-size:1.8rem; font-weight:800; letter-spacing:.02em }
@@ -18,3 +20,17 @@ body{ margin:0; background:var(--bg); color:var(--text); font-family: ui-sans-se
 .badge{ background:rgba(255,255,255,.08); border-radius:999px; padding:.2rem .6rem; font-size:.85rem }
 .canvasWrap{ border:1px solid rgba(255,255,255,.15); border-radius:8px; overflow:hidden; background:#fff }
 .timer{ font-variant-numeric: tabular-nums; font-weight:700 }
+/* Canvas tools readability */
+.canvas .label{ background:#ffffff; color:#222; padding:4px 8px; border-radius:8px; border:1px solid rgba(0,0,0,.08) }
+/* Flowing comments (right -> left) - pixel based via transition */
+.flyLayer{ position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:2 }
+.flyItem{
+  position:absolute; right: calc(-1 * var(--start, 0px));
+  transform: translateX(0);
+  transition: transform linear var(--dur, 5s);
+  white-space:nowrap; padding:.15rem .55rem; border-radius:9999px;
+  background:rgba(0,0,0,.38); color:#fff; font-weight:700; font-size:14px;
+  text-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+/* Hide demo URL in home form */
+.card form > .subtitle{ display:none }

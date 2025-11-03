@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -18,6 +18,7 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
   const [width, setWidth] = useState(3)
   const [mode, setMode] = useState<'pen'|'erase'>('pen')
   const strokesRef = useRef<Array<{x1:number,y1:number,x2:number,y2:number,color:string,width:number}>>([])
+  const strokeStartIdxRef = useRef<number[]>([])
 
   useEffect(()=>{
     const onResize = () => {
@@ -67,6 +68,7 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
   const start = (x:number, y:number) => {
     if (!enabled) return
     drawingRef.current = true
+    strokeStartIdxRef.current.push(strokesRef.current.length)
     lastPos.current = { x, y }
   }
   const move = (x:number, y:number) => {
@@ -111,12 +113,15 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
         strokesRef.current.push({ x1,y1,x2,y2,color,width })
         drawSegment(x1, y1, x2, y2, color, width)
       })
-      .on('broadcast', { event: 'undo' }, () => {
-        strokesRef.current.pop()
+      .on('broadcast', { event: 'undo' }, ({ payload }) => {
+        const count = Math.max(1, Number((payload as any)?.count ?? 1))
+        const newLen = Math.max(0, strokesRef.current.length - count)
+        strokesRef.current.splice(newLen)
         replay()
       })
       .on('broadcast', { event: 'clear' }, () => {
         strokesRef.current = []
+        strokeStartIdxRef.current = []
         replay()
       })
       .subscribe()
@@ -126,13 +131,18 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
 
   const onUndo = () => {
     if (!enabled) return
-    strokesRef.current.pop()
+    const startIdx = strokeStartIdxRef.current.pop()
+    if (startIdx === undefined) return
+    const count = Math.max(0, strokesRef.current.length - startIdx)
+    if (count <= 0) return
+    strokesRef.current.splice(startIdx)
     replay()
-    chanRef.current?.send({ type:'broadcast', event:'undo', payload:{} })
+    chanRef.current?.send({ type:'broadcast', event:'undo', payload:{ count } })
   }
   const onClear = () => {
     if (!enabled) return
     strokesRef.current = []
+    strokeStartIdxRef.current = []
     replay()
     chanRef.current?.send({ type:'broadcast', event:'clear', payload:{} })
   }
@@ -145,7 +155,6 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
           <label className='label'>太さ<input className='input' type='range' min={1} max={20} value={width} onChange={e=>setWidth(Number(e.target.value))} /></label>
           <button className={'button ' + (mode==='pen'?'':'ghost')} onClick={()=>setMode('pen')}>ペン</button>
           <button className={'button ' + (mode==='erase'?'':'ghost')} onClick={()=>setMode('erase')}>消しゴム</button>
-          <button className='button ghost' onClick={onUndo}>一手戻る</button>
           <button className='button ghost' onClick={onClear}>クリア</button>
         </div>
       )}
@@ -165,3 +174,4 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
     </div>
   )
 }
+

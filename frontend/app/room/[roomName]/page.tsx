@@ -37,6 +37,25 @@ export default function RoomPage() {
   const overlayIntervalRef = useRef<number|null>(null)
   const overlayTimeoutRef = useRef<number|null>(null)
   const suppressUntilRef = useRef<number|null>(null)
+  // Flowing comments over canvas (NicoNico-like)
+  type FlyItem = { id:number, text:string, top:number }
+  const [flyItems, setFlyItems] = useState<FlyItem[]>([])
+  const flyNextId = useRef(1)
+  const flyLayerRef = useRef<HTMLDivElement|null>(null)
+  const flyLaneIdxRef = useRef(0)
+  const flyLineHeight = 26 // px
+  const flySpeedPxPerSec = 100 // flowing speed
+  function addFlyComment(text: string){
+    if (!text) return
+    const layer = flyLayerRef.current
+    const h = layer?.clientHeight ?? 240
+    const lanes = Math.max(3, Math.floor(h / flyLineHeight))
+    const lane = flyLaneIdxRef.current % lanes
+    flyLaneIdxRef.current++
+    const top = lane * flyLineHeight + 6 // small padding
+    const id = flyNextId.current++
+    setFlyItems(items => [...items, { id, text, top }])
+  }
 
   useEffect(() => {
     if (!ready) return
@@ -84,6 +103,11 @@ export default function RoomPage() {
 
           // 先に名前だけは同期で引けるようローカルマップ参照
           const nm = memberNameByIdRef.current[g.member_id] || '匿名'
+
+          // すべての回答をキャンバス上にも流す（表示はテキストのみ）
+          if (g?.content) {
+            addFlyComment(`${nm}: ${g.content}`)
+          }
 
           if (g.is_correct) {
             // ここで「最優先で」ロック＆モーダルを立てる（await 禁止）
@@ -427,6 +451,36 @@ export default function RoomPage() {
                 </div>
               </div>
             )}
+          {/* Flowing comments layer */}
+          <div ref={flyLayerRef} className='flyLayer' aria-hidden>
+            {flyItems.map(it => (
+              <div
+                key={it.id}
+                className='flyItem'
+                style={{ top: it.top }}
+                ref={(el) => {
+                  if (!el) return
+                  const layer = flyLayerRef.current
+                  const layerW = layer?.clientWidth ?? 600
+                  const selfW = el.offsetWidth
+                  // place offscreen to the right by its width
+                  el.style.setProperty('--start', `${selfW + 12}px`)
+                  // compute duration from distance / speed
+                  const distPx = layerW + selfW + 48
+                  const durSec = Math.max(2, distPx / flySpeedPxPerSec)
+                  el.style.setProperty('--dur', `${durSec}s`)
+                  // kick off transition next frame
+                  requestAnimationFrame(() => {
+                    el.style.transform = `translateX(-${distPx}px)`
+                  })
+                  // schedule removal after it fully exits
+                  window.setTimeout(() => {
+                    setFlyItems(items => items.filter(x => x.id !== it.id))
+                  }, durSec * 1000 + 200)
+                }}
+              >{it.text}</div>
+            ))}
+          </div>
           </div>
         </div>
         <div className='card' style={{ width:360 }}>

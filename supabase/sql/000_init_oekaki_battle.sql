@@ -170,11 +170,13 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE
   v_prompt text;
   v_drawer uuid;
-  v_correct_count int;
   v_room uuid;
-  v_correct boolean := false;
-  v_points int := 0;
+  v_is_first boolean := false;
+  v_any_correct boolean := false;
 BEGIN
+  -- Lock the round row to serialize concurrent scoring decisions
+  PERFORM 1 FROM public.rounds r WHERE r.id = NEW.round_id FOR UPDATE;
+
   SELECT rd.room_id, rd.drawer_member_id, p.word INTO v_room, v_drawer, v_prompt
   FROM public.rounds rd JOIN public.prompts p ON p.id = rd.prompt_id
   WHERE rd.id = NEW.round_id;
@@ -184,24 +186,44 @@ BEGIN
   END IF;
   NEW.room_id := v_room;
 
+  -- Drawer cannot score
   IF NEW.member_id = v_drawer THEN
     NEW.is_correct := false;
     NEW.awarded_points := 0;
     RETURN NEW;
   END IF;
 
-  v_correct := public.normalize_text(NEW.content) = public.normalize_text(v_prompt);
-  NEW.is_correct := v_correct;
+  -- If content is not an exact match (normalized), it's incorrect
+  IF public.normalize_text(NEW.content) <> public.normalize_text(v_prompt) THEN
+    NEW.is_correct := false;
+    NEW.awarded_points := 0;
+    RETURN NEW;
+  END IF;
 
-  IF v_correct THEN
-    IF EXISTS (SELECT 1 FROM public.guesses g WHERE g.round_id = NEW.round_id AND g.member_id = NEW.member_id AND g.is_correct) THEN
-      NEW.awarded_points := 0; RETURN NEW;
-    END IF;
-    SELECT count(*) INTO v_correct_count FROM public.guesses g WHERE g.round_id = NEW.round_id AND g.is_correct;
-    IF v_correct_count = 0 THEN NEW.awarded_points := 10; ELSE NEW.awarded_points := 5; END IF;
+  -- If this member already had a correct in this round, keep zero
+  IF EXISTS (
+    SELECT 1 FROM public.guesses g
+    WHERE g.round_id = NEW.round_id AND g.member_id = NEW.member_id AND g.is_correct
+  ) THEN
+    NEW.is_correct := false;
+    NEW.awarded_points := 0;
+    RETURN NEW;
+  END IF;
+
+  -- Check whether any correct guess already exists in this round
+  SELECT EXISTS (
+    SELECT 1 FROM public.guesses g WHERE g.round_id = NEW.round_id AND g.is_correct
+  ) INTO v_any_correct;
+
+  -- First-correct only: award +5, mark as correct. Otherwise, mark as incorrect and 0.
+  IF NOT v_any_correct THEN
+    NEW.is_correct := true;
+    NEW.awarded_points := 5;
   ELSE
+    NEW.is_correct := false;
     NEW.awarded_points := 0;
   END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -226,11 +248,17 @@ FOR EACH ROW EXECUTE PROCEDURE public.handle_host_leave();
 -- Scores view
 CREATE OR REPLACE VIEW public.v_room_scores AS
 WITH guess_scores AS (
-  SELECT room_id, member_id, sum(awarded_points)::int AS points FROM public.guesses GROUP BY room_id, member_id
+  SELECT room_id, member_id, sum(awarded_points)::int AS points
+  FROM public.guesses
+  GROUP BY room_id, member_id
 ), drawer_bonus AS (
-  SELECT rd.room_id, rd.drawer_member_id AS member_id, (count(distinct g.member_id) * 2)::int AS points
-  FROM public.rounds rd LEFT JOIN public.guesses g ON g.round_id = rd.id AND g.is_correct
-  GROUP BY rd.room_id, rd.drawer_member_id
+  SELECT rd.room_id,
+         rd.drawer_member_id AS member_id,
+         (CASE WHEN EXISTS (
+            SELECT 1 FROM public.guesses g
+            WHERE g.round_id = rd.id AND g.is_correct
+          ) THEN 3 ELSE 0 END)::int AS points
+  FROM public.rounds rd
 )
 SELECT room_id, member_id, sum(points)::int AS points
 FROM (
@@ -297,10 +325,124 @@ CREATE POLICY guesses_insert_members ON public.guesses
 -- Seed data
 -- =========================
 INSERT INTO public.prompts(word, category) VALUES
-  ('ねこ','動物'), ('いぬ','動物'), ('りんご','食べ物'), ('バナナ','食べ物'),
-  ('自転車','乗り物'), ('家','日用品'), ('車','乗り物'), ('魚','動物'),
-  ('太陽','自然'), ('雨','自然')
+  -- 自然・風景
+  ('虹','自然'), ('滝','自然'), ('砂漠','自然'), ('嵐','自然'), ('オーロラ','自然'),
+  ('火山','自然'), ('夕焼け','自然'), ('森','自然'), ('氷山','自然'), ('流れ星','自然'),
+  ('渓谷','自然'), ('霧','自然'), ('星空','自然'), ('湖','自然'), ('洞窟','自然'),
+  ('満月','自然'), ('風車','自然'), ('夕立','自然'), ('山頂','自然'), ('海岸線','自然'),
+
+  -- 動物
+  ('カメレオン','動物'), ('コアラ','動物'), ('イルカ','動物'), ('ハリネズミ','動物'),
+  ('タカ','動物'), ('アリクイ','動物'), ('ラクダ','動物'), ('ペンギン','動物'),
+  ('クジラ','動物'), ('タコ','動物'),
+  ('カバ','動物'), ('オオカミ','動物'), ('リス','動物'), ('ワニ','動物'), ('フラミンゴ','動物'),
+  ('ナマケモノ','動物'), ('トラ','動物'), ('パンダ','動物'), ('ペリカン','動物'), ('ウサギ','動物'),
+
+  -- 食べ物
+  ('ピザ','食べ物'), ('ラーメン','食べ物'), ('寿司','食べ物'), ('たこ焼き','食べ物'),
+  ('ホットケーキ','食べ物'), ('チョコレート','食べ物'), ('カレー','食べ物'),
+  ('アイスクリーム','食べ物'), ('とうもろこし','食べ物'), ('サンドイッチ','食べ物'),
+  ('おでん','食べ物'), ('オムライス','食べ物'), ('すいか','食べ物'), ('クレープ','食べ物'),
+  ('ハンバーガー','食べ物'), ('ドーナツ','食べ物'), ('たいやき','食べ物'), ('ステーキ','食べ物'),
+  ('パフェ','食べ物'), ('餃子','食べ物'),
+
+  -- 日用品・家電
+  ('傘','日用品'), ('メガネ','日用品'), ('リモコン','日用品'), ('電球','日用品'),
+  ('時計','日用品'), ('歯ブラシ','日用品'), ('ハサミ','日用品'), ('洗濯機','家電'),
+  ('ロボット掃除機','家電'), ('扇風機','家電'),
+
+  -- 乗り物
+  ('飛行機','乗り物'), ('潜水艦','乗り物'), ('救急車','乗り物'), ('宇宙船','乗り物'),
+  ('ジェットコースター','乗り物'), ('気球','乗り物'), ('スケートボード','乗り物'),
+  ('戦車','乗り物'), ('馬車','乗り物'), ('自転車','乗り物'),
+  ('パトカー','乗り物'), ('トラック','乗り物'), ('ヘリコプター','乗り物'), ('新幹線','乗り物'),
+  ('フェリー','乗り物'), ('馬','乗り物'), ('スノーモービル','乗り物'), ('トロッコ','乗り物'),
+  ('電動キックボード','乗り物'), ('人工衛星','乗り物'),
+
+  -- 人物・職業
+  ('忍者','人物'), ('魔法使い','人物'), ('カメラマン','職業'), ('警察官','職業'),
+  ('宇宙飛行士','職業'), ('画家','職業'), ('パン屋','職業'), ('外科医','職業'),
+  ('探偵','職業'), ('教師','職業'),
+
+  -- 建物・場所
+  ('図書館','建物'), ('お城','建物'), ('灯台','建物'), 
+  ('美術館','建物'), ('神社','建物'), ('遊園地','場所'), ('港','場所'), ('砂浜','場所'),
+  ('墓地','場所'),
+
+  -- スポーツ・活動
+  ('バスケットボール','スポーツ'), ('サーフィン','スポーツ'), ('スキー','スポーツ'),
+  ('ボウリング','スポーツ'), ('マラソン','スポーツ'), ('剣道','スポーツ'),
+  ('スケート','スポーツ'), ('柔道','スポーツ'), ('卓球','スポーツ'), ('野球','スポーツ'),
+
+  -- 感情・抽象
+  ('失恋','感情・出来事'), ('友情','感情・出来事'), ('怒り','感情・出来事'),
+  ('驚き','感情・出来事'), ('眠気','感情・出来事'), ('孤独','感情・出来事'),
+  ('幸福','感情・出来事'), ('嫉妬','感情・出来事'), ('勇気','感情・出来事'),
+
+  -- ファンタジー・SF
+  ('ドラゴン','SF・ファンタジー'), ('タイムマシン','SF・ファンタジー'),
+  ('宇宙人','SF・ファンタジー'), ('魔法のランプ','SF・ファンタジー'),
+  ('ロボット','SF・ファンタジー'), ('幽霊','SF・ファンタジー'), ('宝の地図','SF・ファンタジー'),
+  ('ゾンビ','SF・ファンタジー'), ('伝説の剣','SF・ファンタジー'), ('ワープ','SF・ファンタジー'),
+  ('魔法陣','SF・ファンタジー'), 
+  ('未来都市','SF・ファンタジー'), 
+  ('クリスタル','SF・ファンタジー'), ('召喚','SF・ファンタジー'),
+  ('空飛ぶじゅうたん','SF・ファンタジー'), ('ホログラム','SF・ファンタジー'),
+  ('魔女','SF・ファンタジー'), ('呪文','SF・ファンタジー'),
+  ('宇宙ステーション','SF・ファンタジー'), 
+  ('モンスター','SF・ファンタジー'), 
+  ('古代遺跡','SF・ファンタジー'), ('天空の城','SF・ファンタジー'),
+
+  -- 行事・季節
+  ('花火大会','季節・行事'), ('節分','季節・行事'), ('ハロウィン','季節・行事'),
+  ('クリスマスツリー','季節・行事'), ('お正月','季節・行事'), ('ひな祭り','季節・行事'),
+  ('夏祭り','季節・行事'), ('紅葉狩り','季節・行事'), ('バレンタイン','季節・行事'),
+  ('初日の出','季節・行事'),
+
+  -- 道具・アイテム
+  ('地球儀','アイテム'), ('トランプ','アイテム'), ('双眼鏡','アイテム'),
+  ('コンパス','アイテム'), ('傘立て','アイテム'), ('望遠鏡','アイテム'),
+  ('手鏡','アイテム'), ('巻き物','アイテム'), ('鍵','アイテム'), ('砂時計','アイテム'),
+  ('懐中電灯','アイテム'), ('スーツケース','アイテム'), ('スプーン','アイテム'),
+  ('ヘッドホン','アイテム'), ('スマートフォン','アイテム'), ('ノートパソコン','アイテム'),
+  ('傘','アイテム'), ('鉛筆','アイテム'), ('ルーペ','アイテム'), ('バケツ','アイテム'),
+  ('ハンマー','アイテム'),  ('封筒','アイテム'),
+  ('メトロノーム','アイテム'), ('釣り竿','アイテム'), 
+  ('トランク','アイテム'), ('懐中時計','アイテム'), ('ホッチキス','アイテム'),
+  ('鍵','アイテム'),
+
+  -- 文化・芸術
+  ('映画館','文化'), ('舞台','文化'), ('絵の具','文化'), ('ピアノ','文化'),
+  ('ギター','文化'), ('カラオケ','文化'), ('彫刻','文化'), ('オーケストラ','文化'),
+  ('ダンス','文化'), ('漫画','文化'),
+
+  -- 社会・出来事
+  ('選挙','社会'), ('卒業式','社会'), ('地震','社会'), ('ニュース番組','社会'),
+  ('裁判','社会'), ('病院','社会'), ('引っ越し','社会'), ('プロポーズ','社会'),
+  ('結婚式','社会'), ('渋滞','社会'),
+
+  -- 生き物・植物
+  ('ヒマワリ','植物'), ('サクラ','植物'), ('サボテン','植物'), ('キノコ','植物'),
+  ('紅葉','植物'), ('スイカ','植物'), ('コスモス','植物'), ('竹','植物'),
+  ('松ぼっくり','植物'), ('薔薇','植物'),
+  ('アサガオ','植物'), ('タンポポ','植物'), ('ハイビスカス','植物'),
+  ('イチョウ','植物'), 
+  ('モミの木','植物'), ('レンコン','植物'), ('ひまわりの種','植物'),
+  ('梅','植物'), ('クローバー','植物'), ('カエル','生き物'),
+  ('トカゲ','生き物'), ('セミ','生き物'), ('チョウ','生き物'),
+  ('カニ','生き物'), ('カブトムシ','生き物'), ('ナメクジ','生き物'),
+  ('ハチ','生き物'), ('シャチ','生き物'),
+
+  -- 遊び・娯楽
+  ('ボードゲーム','娯楽'), ('ビデオゲーム','娯楽'), ('マジック','娯楽'),
+  ('かくれんぼ','娯楽'),  ('占い','娯楽'),
+  ('UFOキャッチャー','娯楽'), ('カードゲーム','娯楽'), ('折り紙','娯楽'), ('ドミノ倒し','娯楽'),
+
+  -- 抽象・概念
+  ('自由','概念'), ('未来','概念'), ('夢','概念'), ('時間','概念'), ('希望','概念'),
+   ('平和','概念'), ('迷路','概念'),  ('記憶','概念')
   ON CONFLICT (word) DO NOTHING;
+
 
 -- =========================
 -- RPCs (security definer)
