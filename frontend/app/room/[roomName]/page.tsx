@@ -24,6 +24,7 @@ export default function RoomPage() {
   const [messages, setMessages] = useState<string[]>([])
   const [promptWord, setPromptWord] = useState<string|null>(null)
   const [promptLen, setPromptLen] = useState<number>(0)
+  const [promptCategory, setPromptCategory] = useState<string|null>(null)
   const [timeLeft, setTimeLeft] = useState<number>(0)
   const [overlayMsg, setOverlayMsg] = useState<string|null>(null)
   const [advancedThisRound, setAdvancedThisRound] = useState(false)
@@ -207,7 +208,7 @@ export default function RoomPage() {
     if (aRound) {
       setActiveRound(aRound as Round)
       setDrawerMemberId((aRound as any).drawer_member_id)
-      await refreshPrompt(roomId)
+      await refreshPrompt(roomId, (aRound as any).prompt_id)
       await refreshScores(roomId)
       startTimer(aRound as Round)
       setAdvancedThisRound(false)
@@ -220,18 +221,34 @@ export default function RoomPage() {
       setDrawerMemberId(undefined)
       setPromptWord(null)
       setPromptLen(0)
+      setPromptCategory(null)
       setTimeLeft(0)
     }
   }
 
 
-  async function refreshPrompt(roomId: string){
+  async function refreshPrompt(roomId: string, promptId?: string){
     const res = await supabase.rpc('get_active_prompt', { p_room_id: roomId })
     const p = res.data as any
     if (p){
       setPromptWord(p.prompt)
       setPromptLen(p.length || 0)
+      setPromptCategory(p.category)
     }
+
+    // RPCでカテゴリが来ない場合は prompts から補完
+    const id = promptId ?? (activeRound as any)?.prompt_id
+    if (id){
+      const { data } = await supabase
+        .from('prompts')
+        .select('category')
+        .eq('id', id)
+        .maybeSingle()
+      setPromptCategory((data as any)?.category ?? null)
+    } else {
+      setPromptCategory(null)
+    }
+    
   }
 
   async function refreshScores(roomId: string){
@@ -438,7 +455,7 @@ export default function RoomPage() {
       <section className='row' style={{ alignItems:'flex-start' }}>
         <div className='card' style={{ flex:1, minWidth:320 }}>
           <h3>お絵描き</h3>
-          {amDrawer ? <p className='subtitle'>お題: <strong>{promptWord ?? '準備中…'}</strong></p> : <p className='subtitle'>お題の文字数: <strong>{promptLen}</strong></p>}
+          {amDrawer ? <p className='subtitle'>お題: <strong>{promptWord ?? '準備中…'}</strong></p> : <p className='subtitle'>お題の文字数: <strong>{promptLen}</strong>{' ／ カテゴリ: '}<strong>{promptCategory ?? '未設定'}</strong></p>}
             <div className='canvasWrap' style={{ position:'relative' }}>
               <CanvasBoard key={activeRound?.id} roomId={room.id} enabled={amDrawer} channelName={channelName} />
             {overlayMsg && (
