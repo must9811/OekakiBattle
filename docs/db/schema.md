@@ -11,7 +11,7 @@
 - rooms
   - ルーム本体。部屋名ユニーク、ホスト=作成者、状態（lobby/in_progress/finished）
   - `password_hash` は pgcrypto.crypt でハッシュ化
-  - `round_time_sec`（30〜180）、`rounds_total`（1〜20）
+  - `round_time_sec`（30〜300）、`rounds_total`（1〜20）
 - room_members
   - ルーム参加者（匿名ユーザーIDと表示名、ホストフラグ）。退出は `left_at` で管理
   - ホスト行が削除されるとトリガでルーム自体を削除

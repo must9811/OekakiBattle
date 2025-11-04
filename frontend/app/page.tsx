@@ -142,7 +142,32 @@ export default function HomePage() {
   }
 
   return (
-    <main className="container grid" style={{ gap: 16 }}>
+    <div className="homeBg">
+      <div className="doodles" aria-hidden>
+        <span className="doodle" style={{ top:'12%', left:'8%', ...( { ['--size']: '44px', ['--rot']: '-12deg', ['--float']: '13s' } as any) }}>✏️</span>
+        <span className="doodle" style={{ top:'18%', left:'78%', ...( { ['--size']: '56px', ['--rot']: '8deg', ['--float']: '18s' } as any) }}>🖌️</span>
+        <span className="doodle" style={{ top:'32%', left:'20%', ...( { ['--size']: '52px', ['--rot']: '0deg', ['--float']: '16s' } as any) }}>🎨</span>
+        <span className="doodle" style={{ top:'28%', left:'60%', ...( { ['--size']: '42px', ['--rot']: '15deg', ['--float']: '15s' } as any) }}>📏</span>
+        <span className="doodle" style={{ top:'40%', left:'86%', ...( { ['--size']: '50px', ['--rot']: '-5deg', ['--float']: '19s' } as any) }}>✂️</span>
+        <span className="doodle" style={{ top:'58%', left:'12%', ...( { ['--size']: '52px', ['--rot']: '6deg', ['--float']: '17s' } as any) }}>🧽</span>
+        <span className="doodle" style={{ top:'66%', left:'35%', ...( { ['--size']: '54px', ['--rot']: '-10deg', ['--float']: '20s' } as any) }}>🐱</span>
+        <span className="doodle" style={{ top:'70%', left:'72%', ...( { ['--size']: '46px', ['--rot']: '12deg', ['--float']: '14s' } as any) }}>🐶</span>
+        <span className="doodle" style={{ top:'78%', left:'52%', ...( { ['--size']: '48px', ['--rot']: '0deg', ['--float']: '22s' } as any) }}>🐟</span>
+        <span className="doodle" style={{ top:'84%', left:'18%', ...( { ['--size']: '44px', ['--rot']: '8deg', ['--float']: '21s' } as any) }}>🐤</span>
+        <span className="doodle" style={{ top:'22%', left:'44%', ...( { ['--size']: '40px', ['--rot']: '-18deg', ['--float']: '12s' } as any) }}>⭐️</span>
+        <span className="doodle" style={{ top:'50%', left:'90%', ...( { ['--size']: '40px', ['--rot']: '18deg', ['--float']: '12s' } as any) }}>⭐️</span>
+        {/* more icons: tools/animals to enrich the theme */}
+        <span className="doodle" style={{ top:'10%', left:'40%', ...( { ['--size']: '42px', ['--rot']: '-6deg', ['--float']: '16s' } as any) }}>🖍️</span>
+        <span className="doodle" style={{ top:'16%', left:'24%', ...( { ['--size']: '38px', ['--rot']: '10deg', ['--float']: '15s' } as any) }}>🖊️</span>
+        <span className="doodle" style={{ top:'34%', left:'74%', ...( { ['--size']: '40px', ['--rot']: '-14deg', ['--float']: '19s' } as any) }}>✒️</span>
+        <span className="doodle" style={{ top:'62%', left:'84%', ...( { ['--size']: '48px', ['--rot']: '4deg', ['--float']: '18s' } as any) }}>📐</span>
+        <span className="doodle" style={{ top:'76%', left:'8%', ...( { ['--size']: '40px', ['--rot']: '-8deg', ['--float']: '20s' } as any) }}>🧮</span>
+        <span className="doodle" style={{ top:'86%', left:'66%', ...( { ['--size']: '44px', ['--rot']: '6deg', ['--float']: '17s' } as any) }}>🦊</span>
+        <span className="doodle" style={{ top:'26%', left:'6%', ...( { ['--size']: '44px', ['--rot']: '0deg', ['--float']: '21s' } as any) }}>🐼</span>
+        <span className="doodle" style={{ top:'56%', left:'48%', ...( { ['--size']: '36px', ['--rot']: '0deg', ['--float']: '14s' } as any) }}>🦉</span>
+        <span className="doodle" style={{ top:'44%', left:'30%', ...( { ['--size']: '36px', ['--rot']: '0deg', ['--float']: '13s' } as any) }}>🦀</span>
+      </div>
+      <main className="container grid" style={{ gap: 16 }}>
       <h1 className="title">オンラインお絵描きあてバトル</h1>
       {!ready && <p className="subtitle">サインイン準備中…</p>}
       {ready && (
@@ -150,7 +175,7 @@ export default function HomePage() {
           {mode === "none" && (
             <div className="row" style={{ gap: 12 }}>
               <button className="button" onClick={() => setMode("create")}>部屋を作成する</button>
-              <button className="button ghost" onClick={() => setMode("join")}>部屋に入室する</button>
+              <button className="button" onClick={() => setMode("join")}>部屋に入室する</button>
             </div>
           )}
 
@@ -161,15 +186,27 @@ export default function HomePage() {
                 <button className="button ghost" onClick={() => setMode("none")}>戻る</button>
               </div>
               <form onSubmit={onSubmit} className="grid" style={{ gap: 10, marginTop: 12 }}>
-                <label className="label">部屋名
+                <label className="label">
+                  <div className="labelHead">
+                    <span>部屋名</span>
+                    <span className="helpIcon" title="2〜24文字。半角/全角どちらも可。同名の部屋は作成できません。">？</span>
+                  </div>
                   <input className={`input${errors.name ? " invalid" : ""}`} value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors(v=>({ ...v, name: undefined })) }} required minLength={2} maxLength={24} />
                   {errors.name && <span className="fieldError">{errors.name}</span>}
                 </label>
-                <label className="label">パスワード
+                <label className="label">
+                  <div className="labelHead">
+                    <span>パスワード</span>
+                    <span className="helpIcon" title="4〜16文字。部屋の鍵として使用します。">？</span>
+                  </div>
                   <input className={`input${errors.password ? " invalid" : ""}`} value={password} onChange={(e) => { setPassword(e.target.value); if (errors.password) setErrors(v=>({ ...v, password: undefined })) }} required minLength={4} maxLength={16} type="password" />
                   {errors.password && <span className="fieldError">{errors.password}</span>}
                 </label>
-                <label className="label">ユーザー名
+                <label className="label">
+                  <div className="labelHead">
+                    <span>ユーザー名</span>
+                    <span className="helpIcon" title="1〜16文字。ルーム内で一意である必要があります。">？</span>
+                  </div>
                   <input className={`input${errors.username ? " invalid" : ""}`} value={username} onChange={(e) => { setUsername(e.target.value); if (errors.username) setErrors(v=>({ ...v, username: undefined })) }} required minLength={1} maxLength={16} />
                   {errors.username && <span className="fieldError">{errors.username}</span>}
                 </label>
@@ -178,12 +215,13 @@ export default function HomePage() {
                     <label className="label">ラウンド数
                       <input className="input" type="number" min={1} max={10} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} />
                     </label>
-                    <label className="label">制限時間（秒）
+                    <label className="label">制限時間（分）
                       <select className="input" value={roundTime} onChange={(e) => setRoundTime(Number(e.target.value))}>
-                        <option value={30}>30</option>
-                        <option value={60}>60</option>
-                        <option value={90}>90</option>
-                        <option value={120}>120</option>
+                        <option value={60}>1分</option>
+                        <option value={120}>2分</option>
+                        <option value={180}>3分</option>
+                        <option value={240}>4分</option>
+                        <option value={300}>5分</option>
                       </select>
                     </label>
                   </div>
@@ -206,14 +244,14 @@ export default function HomePage() {
               <li>出題者は毎回ランダムに決まりますが、全員が一度出題者を経験するまでは同じ人が再度出題者になることはありません。</li>
               <li>誰かが正解すると、<strong>正解者に5点</strong>、<strong>出題者に3点</strong>が入ります。制限時間内に正解者がいない場合は、誰にも点数は入りません。</li>
               <li>描画は全員に<strong>リアルタイムで同期</strong>されます。ペンや消しゴムの使用、線の太さや色の変更も可能です。</li>
+              <li>全ラウンド終了時に最も得点の高い参加者が<strong>優勝</strong>です。同点の場合は複数人が優勝となります。</li>
+              <li>1部屋につき最小3人、最大10人まで遊べます。</li>
             </ul>
 
           </section>
         </>
       )}
     </main>
+    </div>
   )
 }
-
-
-

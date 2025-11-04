@@ -440,7 +440,12 @@ export default function RoomPage() {
         </div>
         <div className='hstack'>
           {!isHost && <button className='button ghost' onClick={leaveRoom}>部屋から退室する</button>}
-          {isHost && room.status==='lobby' && <button className='button' onClick={startGame}>ゲーム開始</button>}
+          {isHost && room.status==='lobby' && (
+            <>
+              <button className='button' onClick={startGame}>ゲーム開始</button>
+              <button className='button ghost' onClick={endGame}>部屋を破棄する</button>
+            </>
+          )}
           {isHost && room.status==='in_progress' && <button className='button' onClick={endGame}>ゲームを終了する</button>}
           {isHost && isFinished && (
             <>
@@ -544,7 +549,7 @@ export default function RoomPage() {
       )}
 
       <section className='card'>
-        <h3>メッセージ</h3>
+        <h3>回答ログ</h3>
         <ul>
           {messages.map((m,i)=>(<li key={i}>{m}</li>))}
         </ul>

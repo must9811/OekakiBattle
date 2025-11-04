@@ -153,9 +153,9 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
         <div className='row' style={{ gap:8, marginBottom:8 }}>
           <label className='label'>色<input className='input' type='color' value={color} onChange={e=>setColor(e.target.value)} /></label>
           <label className='label'>太さ<input className='input' type='range' min={1} max={20} value={width} onChange={e=>setWidth(Number(e.target.value))} /></label>
-          <button className={'button ' + (mode==='pen'?'':'ghost')} onClick={()=>setMode('pen')}>ペン</button>
-          <button className={'button ' + (mode==='erase'?'':'ghost')} onClick={()=>setMode('erase')}>消しゴム</button>
-          <button className='button ghost' onClick={onClear}>クリア</button>
+          <button className='button' onClick={()=>setMode('pen')}>ペン</button>
+          <button className='button' onClick={()=>setMode('erase')}>消しゴム</button>
+          <button className='button' onClick={onClear}>クリア</button>
         </div>
       )}
       <canvas
