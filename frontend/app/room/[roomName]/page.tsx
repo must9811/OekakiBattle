@@ -45,6 +45,7 @@ export default function RoomPage() {
   const [roundSnapshots, setRoundSnapshots] = useState<RoundSnapshot[]>([])
   const [nextRoundsTotal, setNextRoundsTotal] = useState<number>(3)
   const [nextRoundTimeSec, setNextRoundTimeSec] = useState<number>(60)
+  const [showResult, setShowResult] = useState(false)
   const [hadGuestsOnce, setHadGuestsOnce] = useState(false)
   const [hostReturnScheduled, setHostReturnScheduled] = useState(false)
   const isHostRef = useRef(false)
@@ -140,7 +141,15 @@ export default function RoomPage() {
             if ((payload.new as any)?.status === 'finished') {
               setFinishedAtLeastOnce(true)
               setMessages(m => [...m, '🎉 ゲーム終了！リザルトを表示します。'])
-              setOverlayMsg(null); setOverlayCountdown(null)
+              const waitMs = suppressUntilRef.current ? Math.max(0, suppressUntilRef.current - Date.now()) : 0
+              if (waitMs > 0) {
+                setShowResult(false)
+                window.setTimeout(() => {
+                  setShowResult(true)
+                }, waitMs)
+              } else {
+                setShowResult(true)
+              }
               const currentRound = lastRoundRef.current ?? activeRound
               if (currentRound) {
                 void captureRoundSnapshot(currentRound)
@@ -149,6 +158,7 @@ export default function RoomPage() {
             if ((payload.new as any)?.status === 'in_progress') {
               setRoundSnapshots([])
               lastRoundRef.current = undefined
+              setShowResult(false)
             }
           })
           .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guesses', filter: `room_id=eq.${roomData.id}` }, async (payload) => {
@@ -238,6 +248,17 @@ export default function RoomPage() {
     setNextRoundTimeSec(Number(room.round_time_sec || 60))
     roundTimeRef.current = Number(room.round_time_sec || 60)
   }, [room?.rounds_total, room?.round_time_sec])
+
+  useEffect(() => {
+    if (!room) return
+    if (room.status !== 'finished') {
+      if (showResult) setShowResult(false)
+      return
+    }
+    if (showResult) return
+    const waitMs = suppressUntilRef.current ? Math.max(0, suppressUntilRef.current - Date.now()) : 0
+    if (waitMs === 0) setShowResult(true)
+  }, [room?.status, showResult])
 
   async function refreshMembers(roomId: string) {
     const { data } = await supabase.rpc('get_room_members', { p_room_id: roomId })
@@ -587,7 +608,8 @@ export default function RoomPage() {
     return arr
   }, [members, scores])
 
-  const isFinished = room?.status === 'finished'
+  const isGameFinished = room?.status === 'finished'
+  const isFinished = isGameFinished && showResult
 
   async function endGame() {
     if (!room) return
