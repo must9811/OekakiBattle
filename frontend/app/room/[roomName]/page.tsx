@@ -2,12 +2,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useAnonAuth } from '@/lib/useAnonAuth'
-import CanvasBoard from '@/components/CanvasBoard'
+import CanvasBoard, { type CanvasBoardHandle } from '@/components/CanvasBoard'
 import { useParams } from 'next/navigation'
 
 type Room = { id: string; name: string; status: 'lobby'|'in_progress'|'finished'; round_time_sec: number; rounds_total: number; host_user: string }
 type Member = { id: string; username: string; is_host: boolean }
 type Round = { id: string; room_id: string; number: number; drawer_member_id: string; prompt_id: string; status: 'pending'|'active'|'ended'|'skipped'; started_at: string|null }
+type RoundSnapshot = {
+  roundId: string
+  roundNumber: number
+  dataUrl: string
+  drawerName?: string
+  promptWord?: string | null
+  winnerName?: string | null
+  durationSec?: number | null
+}
 
 export default function RoomPage() {
   const ready = useAnonAuth()
@@ -33,8 +42,11 @@ export default function RoomPage() {
   const memberNameByIdRef = useRef<Record<string,string>>({})
   const [finishedAtLeastOnce, setFinishedAtLeastOnce] = useState(false)
   const [scores, setScores] = useState<Record<string, number>>({})
+  const [roundSnapshots, setRoundSnapshots] = useState<RoundSnapshot[]>([])
   const isHostRef = useRef(false)
   const roundTimeRef = useRef<number>(60)
+  const lastRoundRef = useRef<Round|undefined>(undefined)
+  const canvasRef = useRef<CanvasBoardHandle|null>(null)
   const overlayIntervalRef = useRef<number|null>(null)
   const overlayTimeoutRef = useRef<number|null>(null)
   const suppressUntilRef = useRef<number|null>(null)
@@ -97,6 +109,14 @@ export default function RoomPage() {
             setFinishedAtLeastOnce(true)
             setMessages(m => [...m, '🎉 ゲーム終了！リザルトを表示します。'])
             setOverlayMsg(null); setOverlayCountdown(null)
+            const currentRound = lastRoundRef.current ?? activeRound
+            if (currentRound) {
+              void captureRoundSnapshot(currentRound)
+            }
+          }
+          if ((payload.new as any)?.status === 'in_progress') {
+            setRoundSnapshots([])
+            lastRoundRef.current = undefined
           }
         })
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'guesses', filter: `room_id=eq.${roomData.id}` }, async (payload) => {
@@ -205,6 +225,12 @@ export default function RoomPage() {
       .limit(1)
       .maybeSingle()
 
+    const prev = lastRoundRef.current
+    const next = aRound ? (aRound as Round) : undefined
+    if (prev && (!next || prev.id !== next.id)) {
+      void captureRoundSnapshot(prev)
+    }
+
     if (aRound) {
       setActiveRound(aRound as Round)
       setDrawerMemberId((aRound as any).drawer_member_id)
@@ -216,6 +242,7 @@ export default function RoomPage() {
       setOverlayCountdown(null)
       if (overlayIntervalRef.current) { window.clearInterval(overlayIntervalRef.current); overlayIntervalRef.current = null }
       if (overlayTimeoutRef.current) { window.clearTimeout(overlayTimeoutRef.current); overlayTimeoutRef.current = null }
+      lastRoundRef.current = aRound as Round
     } else {
       setActiveRound(undefined)
       setDrawerMemberId(undefined)
@@ -223,6 +250,7 @@ export default function RoomPage() {
       setPromptLen(0)
       setPromptCategory(null)
       setTimeLeft(0)
+      lastRoundRef.current = undefined
     }
   }
 
@@ -249,6 +277,65 @@ export default function RoomPage() {
       setPromptCategory(null)
     }
     
+  }
+
+  async function captureRoundSnapshot(round: Round){
+    const dataUrl = canvasRef.current?.getSnapshotDataUrl()
+    if (!dataUrl) return
+    const drawerName = memberNameByIdRef.current[round.drawer_member_id]
+    setRoundSnapshots(prev => {
+      if (prev.some(p => p.roundId === round.id)) return prev
+      return [...prev, { roundId: round.id, roundNumber: round.number, dataUrl, drawerName }]
+    })
+
+    const { data: roundRow } = await supabase
+      .from('rounds')
+      .select('id,started_at,ended_at,prompt_id')
+      .eq('id', round.id)
+      .maybeSingle()
+
+    let durationSec: number | null = null
+    if ((roundRow as any)?.started_at && (roundRow as any)?.ended_at) {
+      const startMs = Date.parse((roundRow as any).started_at)
+      const endMs = Date.parse((roundRow as any).ended_at)
+      if (Number.isFinite(startMs) && Number.isFinite(endMs)) {
+        durationSec = Math.max(0, Math.round((endMs - startMs) / 1000))
+      }
+    }
+
+    let promptWord: string | null = null
+    const pid = (roundRow as any)?.prompt_id ?? round.prompt_id
+    if (pid) {
+      promptWord = await fetchPromptWordById(pid)
+    }
+
+    let winnerName: string | null = null
+    const { data: guessRow } = await supabase
+      .from('guesses')
+      .select('member_id, created_at')
+      .eq('round_id', round.id)
+      .eq('is_correct', true)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if ((guessRow as any)?.member_id) {
+      const winId = (guessRow as any).member_id as string
+      winnerName = memberNameByIdRef.current[winId] ?? null
+      if (!winnerName) {
+        const { data: memberRow } = await supabase
+          .from('room_members')
+          .select('username')
+          .eq('id', winId)
+          .maybeSingle()
+        winnerName = (memberRow as any)?.username ?? null
+      }
+    }
+
+    setRoundSnapshots(prev => prev.map(p => (
+      p.roundId === round.id
+        ? { ...p, promptWord, winnerName, durationSec }
+        : p
+    )))
   }
 
   async function refreshScores(roomId: string){
@@ -385,6 +472,8 @@ export default function RoomPage() {
       // 次ゲーム用に状態をリセット
       setOverlayMsg(null); setOverlayCountdown(null)
       setAdvancedThisRound(false)
+      setRoundSnapshots([])
+      lastRoundRef.current = undefined
       await refreshRound(room.id)
       await refreshScores(room.id)
     }
@@ -462,7 +551,7 @@ export default function RoomPage() {
           <h3>お絵描き</h3>
           {amDrawer ? <p className='subtitle'>お題: <strong>{promptWord ?? '準備中…'}</strong></p> : <p className='subtitle'>お題の文字数: <strong>{promptLen}</strong>{' ／ カテゴリ: '}<strong>{promptCategory ?? '未設定'}</strong></p>}
             <div className='canvasWrap' style={{ position:'relative' }}>
-              <CanvasBoard key={activeRound?.id} roomId={room.id} enabled={amDrawer} channelName={channelName} />
+              <CanvasBoard ref={canvasRef} key={activeRound?.id} roomId={room.id} enabled={amDrawer} channelName={channelName} />
             {overlayMsg && (
               <div style={{ position:'absolute', inset:0, display:'grid', placeItems:'center', background:'rgba(128,128,128,0.4)' }}>
                 <div style={{ width:280, height:280, background:'#ffffff', color:'#222', borderRadius:12, boxShadow:'0 6px 16px rgba(0,0,0,0.2)', display:'grid', alignContent:'center', justifyItems:'center', padding:16, textAlign:'center', whiteSpace:'pre-line' }}>
@@ -544,6 +633,34 @@ export default function RoomPage() {
               </li>
             ))}
           </ol>
+          <div className='grid' style={{ marginTop:16 }}>
+            <h4>各ラウンドの絵</h4>
+            {roundSnapshots.length === 0 ? (
+              <p className='subtitle'>ラウンド絵の記録はまだありません。</p>
+            ) : (
+              <div className='grid' style={{ gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                {[...roundSnapshots]
+                  .sort((a,b)=> a.roundNumber - b.roundNumber)
+                  .map(s => (
+                    <div key={s.roundId} className='card' style={{ padding:8, background:'#ffffff', color:'#222' }}>
+                      <img src={s.dataUrl} alt={`ラウンド${s.roundNumber}の絵`} style={{ width:'100%', height:'auto', display:'block', borderRadius:6, border:'1px solid #ddd' }} />
+                      <div className='subtitle' style={{ marginTop:6 }}>
+                        ラウンド {s.roundNumber}{s.drawerName ? ` — 出題者: ${s.drawerName}` : ''}
+                      </div>
+                      <div className='subtitle'>
+                        お題: {s.promptWord ?? '不明'}
+                      </div>
+                      <div className='subtitle'>
+                        正解者: {s.winnerName ?? 'なし'}
+                      </div>
+                      <div className='subtitle'>
+                        経過: {typeof s.durationSec === 'number' ? `${s.durationSec}s` : '不明'}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
           {!isHost && <p className='subtitle'>ホストの「もう一度遊ぶ」でゲームが再開されます。</p>}
         </section>
       )}

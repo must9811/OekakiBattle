@@ -1,5 +1,5 @@
 ﻿'use client'
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 type Props = {
@@ -8,7 +8,14 @@ type Props = {
   channelName?: string
 }
 
-export default function CanvasBoard({ roomId, enabled, channelName }: Props){
+export type CanvasBoardHandle = {
+  getSnapshotDataUrl: () => string | null
+}
+
+const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
+  { roomId, enabled, channelName },
+  ref
+){
   const canvasRef = useRef<HTMLCanvasElement|null>(null)
   const drawingRef = useRef(false)
   const lastPos = useRef<{x:number,y:number}|null>(null)
@@ -19,6 +26,14 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
   const [mode, setMode] = useState<'pen'|'erase'>('pen')
   const strokesRef = useRef<Array<{x1:number,y1:number,x2:number,y2:number,color:string,width:number}>>([])
   const strokeStartIdxRef = useRef<number[]>([])
+
+  useImperativeHandle(ref, () => ({
+    getSnapshotDataUrl: () => {
+      const c = canvasRef.current
+      if (!c) return null
+      return c.toDataURL('image/png')
+    }
+  }), [])
 
   useEffect(()=>{
     const onResize = () => {
@@ -173,5 +188,6 @@ export default function CanvasBoard({ roomId, enabled, channelName }: Props){
       )}
     </div>
   )
-}
+})
 
+export default CanvasBoard
