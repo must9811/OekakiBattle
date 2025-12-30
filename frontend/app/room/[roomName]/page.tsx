@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { useAnonAuth } from '@/lib/useAnonAuth'
 import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import confetti from 'canvas-confetti'
 
 type Room = { id: string; name: string; status: 'lobby' | 'in_progress' | 'finished'; round_time_sec: number; rounds_total: number; host_user: string }
 type Member = { id: string; username: string; is_host: boolean }
@@ -38,6 +39,8 @@ export default function RoomPage() {
   const [overlayMsg, setOverlayMsg] = useState<string | null>(null)
   const [advancedThisRound, setAdvancedThisRound] = useState(false)
   const [overlayCountdown, setOverlayCountdown] = useState<number | null>(null)
+  const [celebrate, setCelebrate] = useState(false)
+  const [overlayVariant, setOverlayVariant] = useState<'correct' | 'timeout' | 'neutral'>('neutral')
   const roomIdRef = useRef<string | null>(null)
   const memberNameByIdRef = useRef<Record<string, string>>({})
   const [finishedAtLeastOnce, setFinishedAtLeastOnce] = useState(false)
@@ -52,6 +55,7 @@ export default function RoomPage() {
   const roundTimeRef = useRef<number>(60)
   const lastRoundRef = useRef<Round | undefined>(undefined)
   const canvasRef = useRef<CanvasBoardHandle | null>(null)
+  const confettiFiredRef = useRef(false)
   const overlayIntervalRef = useRef<number | null>(null)
   const overlayTimeoutRef = useRef<number | null>(null)
   const suppressUntilRef = useRef<number | null>(null)
@@ -116,6 +120,8 @@ export default function RoomPage() {
             if (payload.eventType === 'DELETE') {
               setMessages(m => [...m, '⚠️ ホストがゲームを中断しました。5秒後にトップへ戻ります。'])
               setOverlayMsg('ホストがゲームを中断しました。\n5秒後にトップへ戻ります。')
+              setCelebrate(false)
+              setOverlayVariant('neutral')
               setOverlayCountdown(5)
               if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null }
               if (overlayTimeoutRef.current) { window.clearTimeout(overlayTimeoutRef.current); overlayTimeoutRef.current = null }
@@ -176,6 +182,8 @@ export default function RoomPage() {
               // ここで「最優先で」ロック＆モーダルを立てる（await 禁止）
               setMessages(m => [...m, `✅ ${nm}が正解しました！ 正解: ${g.content}`])
               setOverlayMsg(`${nm}が正解しました！\n正解: ${g.content}`)
+              setCelebrate(true)
+              setOverlayVariant('correct')
               setOverlayCountdown(5)
               setAdvancedThisRound(true)
               suppressUntilRef.current = Date.now() + 5500
@@ -260,6 +268,23 @@ export default function RoomPage() {
     if (waitMs === 0) setShowResult(true)
   }, [room?.status, showResult])
 
+  useEffect(() => {
+    if (!overlayMsg) {
+      confettiFiredRef.current = false
+      if (celebrate) setCelebrate(false)
+      if (overlayVariant !== 'neutral') setOverlayVariant('neutral')
+      return
+    }
+    if (!celebrate || confettiFiredRef.current) return
+    confettiFiredRef.current = true
+    const defaults = { particleCount: 60, spread: 70, startVelocity: 45, gravity: 0.9, ticks: 220 }
+    confetti({ ...defaults, origin: { x: 0.2, y: 0.6 } })
+    confetti({ ...defaults, origin: { x: 0.8, y: 0.6 } })
+    window.setTimeout(() => {
+      confetti({ particleCount: 80, spread: 100, startVelocity: 55, gravity: 0.85, ticks: 240, origin: { x: 0.5, y: 0.4 } })
+    }, 220)
+  }, [overlayMsg, celebrate])
+
   async function refreshMembers(roomId: string) {
     const { data } = await supabase.rpc('get_room_members', { p_room_id: roomId })
     if (data) {
@@ -283,6 +308,8 @@ export default function RoomPage() {
     setHostReturnScheduled(true)
     setMessages(m => [...m, '⚠️ ゲストが全員退出しました。5秒後にトップへ戻ります。'])
     setOverlayMsg('ゲストが全員退出しました。\n5秒後にトップへ戻ります。')
+    setCelebrate(false)
+    setOverlayVariant('neutral')
     setOverlayCountdown(5)
     if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null }
     if (overlayTimeoutRef.current) { window.clearTimeout(overlayTimeoutRef.current); overlayTimeoutRef.current = null }
@@ -493,6 +520,8 @@ export default function RoomPage() {
 
         setMessages(m => [...m, '⏱ 時間切れ — 正解者なし'])
         setOverlayMsg(`制限時間内に正解者はいませんでした。\n正解は『${endedWord}』でした。\n5秒後に次のラウンドが始まります。`)
+        setCelebrate(false)
+        setOverlayVariant('timeout')
         setOverlayCountdown(5)
         suppressUntilRef.current = Date.now() + 5500
 
@@ -667,16 +696,18 @@ export default function RoomPage() {
       {!isFinished && (
         <section className='row' style={{ alignItems: 'flex-start' }}>
           <div className='card' style={{ flex: 1, minWidth: 320 }}>
-            <h3>お絵描き</h3>
+            <h3>{amDrawer ? 'あなたは出題者です ✏️' : 'あなたは回答者です 💬'}</h3>
             {amDrawer ? <p className='subtitle'>お題: <strong>{promptWord ?? '準備中…'}</strong></p> : <p className='subtitle'>お題の文字数: <strong>{promptLen}</strong>{' ／ カテゴリ: '}<strong>{promptCategory ?? '未設定'}</strong></p>}
             <div className='canvasWrap' style={{ position: 'relative' }}>
               <CanvasBoard ref={canvasRef} key={activeRound?.id} roomId={room.id} enabled={amDrawer} channelName={channelName} />
               {overlayMsg && (
-                <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(128,128,128,0.4)' }}>
-                  <div style={{ width: 280, height: 280, background: '#ffffff', color: '#222', borderRadius: 12, boxShadow: '0 6px 16px rgba(0,0,0,0.2)', display: 'grid', alignContent: 'center', justifyItems: 'center', padding: 16, textAlign: 'center', whiteSpace: 'pre-line' }}>
-                    <div style={{ fontSize: 18, fontWeight: 800 }}>{overlayMsg}</div>
+                <div className='overlayBackdrop'>
+                  {overlayVariant === 'correct' && <div className='overlayDoubleCircle' aria-hidden />}
+                  {overlayVariant === 'timeout' && <div className='overlayCross' aria-hidden />}
+                  <div className='overlayCard'>
+                    <div className='overlayTitle'>{overlayMsg}</div>
                     {typeof overlayCountdown === 'number' && overlayCountdown >= 0 && (
-                      <div style={{ marginTop: 12, fontSize: 14, color: '#555' }}>次のラウンドまで: {overlayCountdown}s</div>
+                      <div className='overlayCountdown'>次のラウンドまで: {overlayCountdown}s</div>
                     )}
                   </div>
                 </div>

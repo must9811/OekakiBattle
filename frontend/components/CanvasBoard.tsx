@@ -162,15 +162,111 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     chanRef.current?.send({ type:'broadcast', event:'clear', payload:{} })
   }
 
+  const palette = [
+    '#111827',
+    '#ef4444',
+    '#f97316',
+    '#eab308',
+    '#22c55e',
+    '#14b8a6',
+    '#3b82f6',
+    '#8b5cf6',
+    '#ec4899',
+    '#ffffff',
+  ]
+  const widths = [2, 4, 6, 10, 14]
+
   return (
     <div className='canvas' style={{ position:'relative' }}>
       {enabled && (
-        <div className='row' style={{ gap:8, marginBottom:8 }}>
-          <label className='label'>色<input className='input' type='color' value={color} onChange={e=>setColor(e.target.value)} /></label>
-          <label className='label'>太さ<input className='input' type='range' min={1} max={20} value={width} onChange={e=>setWidth(Number(e.target.value))} /></label>
-          <button className='button' onClick={()=>setMode('pen')}>ペン</button>
-          <button className='button' onClick={()=>setMode('erase')}>消しゴム</button>
-          <button className='button' onClick={onClear}>クリア</button>
+        <div className='grid' style={{ gap:8, marginBottom:8 }}>
+          <div className='row' style={{ gap:8, alignItems:'center' }}>
+            <span style={{ fontWeight:700, color:'#111827' }}>ペンの色</span>
+            {palette.map((c) => (
+              <button
+                key={c}
+                type='button'
+                className='button ghost'
+                aria-label={`色 ${c}`}
+                onClick={() => setColor(c)}
+                style={{
+                  width:24,
+                  height:24,
+                  padding:0,
+                  borderRadius:6,
+                  border: color === c ? '2px solid #111827' : '1px solid rgba(15,23,42,.15)',
+                  background: c,
+                  boxShadow: c === '#ffffff' ? 'inset 0 0 0 1px rgba(0,0,0,.15)' : 'none'
+                }}
+              />
+            ))}
+          </div>
+          <div className='row' style={{ gap:8, alignItems:'center', justifyContent:'space-between' }}>
+            <div className='row' style={{ gap:8, alignItems:'center' }}>
+              <span style={{ fontWeight:700, color:'#111827' }}>ペンの太さ</span>
+              {widths.map((w) => {
+                const size = Math.round(4 + w * 1.2)
+                return (
+                  <button
+                    key={w}
+                    type='button'
+                    className='button ghost'
+                    aria-label={`太さ ${w}`}
+                    onClick={() => setWidth(w)}
+                    style={{
+                      width:28,
+                      height:28,
+                      padding:0,
+                      borderRadius:999,
+                      borderColor: width === w ? 'rgba(15,118,110,.6)' : 'rgba(15,23,42,.15)',
+                      background: width === w ? 'rgba(15,118,110,.08)' : 'transparent',
+                      display:'grid',
+                      placeItems:'center'
+                    }}
+                  >
+                    <span style={{
+                      width:size,
+                      height:size,
+                      borderRadius:999,
+                      background:'#111827',
+                      display:'block'
+                    }} />
+                  </button>
+                )
+              })}
+            </div>
+            <div className='row' style={{ gap:6 }}>
+              <button
+                className='button ghost'
+                aria-label='ペン'
+                onClick={()=>setMode('pen')}
+                style={{
+                  borderColor: mode === 'pen' ? 'rgba(15,118,110,.6)' : 'rgba(15,23,42,.15)',
+                  background: mode === 'pen' ? 'rgba(15,118,110,.12)' : 'transparent'
+                }}
+              >
+                <svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke={mode === 'pen' ? '#0f766e' : '#475569'} strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden>
+                  <path d='M12 20h9' />
+                  <path d='M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z' />
+                </svg>
+              </button>
+              <button
+                className='button ghost'
+                aria-label='消しゴム'
+                onClick={()=>setMode('erase')}
+                style={{
+                  borderColor: mode === 'erase' ? 'rgba(15,118,110,.6)' : 'rgba(15,23,42,.15)',
+                  background: mode === 'erase' ? 'rgba(15,118,110,.12)' : 'transparent'
+                }}
+              >
+                <svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke={mode === 'erase' ? '#0f766e' : '#475569'} strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden>
+                  <path d='M20 20H9l-5-5a2.5 2.5 0 0 1 0-3.5l7-7a2.5 2.5 0 0 1 3.5 0l5.5 5.5a2.5 2.5 0 0 1 0 3.5L14 20z' />
+                  <path d='M6 13l5 5' />
+                </svg>
+              </button>
+              <button className='button' onClick={onClear}>クリア</button>
+            </div>
+          </div>
         </div>
       )}
       <canvas
