@@ -43,6 +43,8 @@ export default function RoomPage() {
   const [finishedAtLeastOnce, setFinishedAtLeastOnce] = useState(false)
   const [scores, setScores] = useState<Record<string, number>>({})
   const [roundSnapshots, setRoundSnapshots] = useState<RoundSnapshot[]>([])
+  const [nextRoundsTotal, setNextRoundsTotal] = useState<number>(3)
+  const [nextRoundTimeSec, setNextRoundTimeSec] = useState<number>(60)
   const isHostRef = useRef(false)
   const roundTimeRef = useRef<number>(60)
   const lastRoundRef = useRef<Round|undefined>(undefined)
@@ -199,6 +201,13 @@ export default function RoomPage() {
     })()
     return () => { if (cleanup) cleanup() }
   }, [ready, roomName])
+
+  useEffect(() => {
+    if (!room) return
+    setNextRoundsTotal(Number(room.rounds_total || 3))
+    setNextRoundTimeSec(Number(room.round_time_sec || 60))
+    roundTimeRef.current = Number(room.round_time_sec || 60)
+  }, [room?.rounds_total, room?.round_time_sec])
 
   async function refreshMembers(roomId: string){
     const { data } = await supabase.rpc('get_room_members', { p_room_id: roomId })
@@ -479,6 +488,24 @@ export default function RoomPage() {
     }
   }
 
+  async function applySettingsAndReplay() {
+    if (!room) return
+    if (isHost) {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ rounds_total: nextRoundsTotal, round_time_sec: nextRoundTimeSec })
+        .eq('id', room.id)
+      if (error) {
+        setMessages(m=>[...m, `設定更新エラー: ${error.message}`])
+        return
+      }
+      // 反映遅延に備えてローカル状態とタイマー参照を即時更新
+      setRoom(prev => prev ? { ...prev, rounds_total: nextRoundsTotal, round_time_sec: nextRoundTimeSec } : prev)
+      roundTimeRef.current = nextRoundTimeSec
+    }
+    await replayGame()
+  }
+
   // スコア集計（メンバーにスコア0も含め、降順ソート）
   const sortedScores = useMemo(() => {
     const arr = members.map(m => ({
@@ -538,7 +565,7 @@ export default function RoomPage() {
           {isHost && room.status==='in_progress' && <button className='button' onClick={endGame}>ゲームを終了する</button>}
           {isHost && isFinished && (
             <>
-              <button className='button' onClick={replayGame}>もう一度遊ぶ</button>
+              <button className='button' onClick={applySettingsAndReplay}>もう一度遊ぶ</button>
               <button className='button ghost' onClick={endGame}>部屋を閉じる</button>
             </>
           )}
@@ -661,6 +688,32 @@ export default function RoomPage() {
               </div>
             )}
           </div>
+          {isHost && (
+            <div className='grid' style={{ marginTop:16 }}>
+              <h4>次のゲーム設定</h4>
+              <div className='row'>
+                <label className='label'>
+                  ラウンド数
+                  <select className='input' value={nextRoundsTotal} onChange={(e)=>setNextRoundsTotal(Number(e.target.value))}>
+                    {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className='label'>
+                  制限時間
+                  <select className='input' value={nextRoundTimeSec} onChange={(e)=>setNextRoundTimeSec(Number(e.target.value))}>
+                    {[60,120,180,240,300].map(sec => (
+                      <option key={sec} value={sec}>{sec/60}分</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className='row'>
+                <button className='button' onClick={applySettingsAndReplay}>設定してもう一度遊ぶ</button>
+              </div>
+            </div>
+          )}
           {!isHost && <p className='subtitle'>ホストの「もう一度遊ぶ」でゲームが再開されます。</p>}
         </section>
       )}
