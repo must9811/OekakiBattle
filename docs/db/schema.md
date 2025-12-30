@@ -25,7 +25,7 @@
   - 回答ログ。`is_correct`, `awarded_points` はトリガで自動計算
 
 - v_room_scores（ビュー）
-  - スコア集計ビュー。回答ポイント合計 + 出題者ボーナス（そのラウンドで正解者がいれば+3）を合算
+  - スコア集計ビュー。回答ポイント合計 + 出題者ボーナス（そのラウンドで正解者がいれば+1）を合算
 
 ## 主要関数/トリガ
 - `normalize_text(text)`
@@ -34,7 +34,7 @@
   - 正解判定: `normalize_text(content) == normalize_text(prompt.word)`
   - 出題者自身の回答は常に不正解（0点）
   - 同一メンバーの同ラウンド二重正解は 0 点
-  - 最初の正解「のみ」+5 点、それ以外の正解は無効（不正解として扱う/0点）
+  - 最初の正解「のみ」+1 点、それ以外の正解は無効（不正解として扱う/0点）
 - `handle_host_leave()` トリガ（room_members AFTER DELETE）
   - ホストが退出→ルーム削除（関連行は cascade）
 - `on_correct_advance()` トリガ（guesses AFTER INSERT）

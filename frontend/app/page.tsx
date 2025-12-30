@@ -213,7 +213,7 @@ export default function HomePage() {
                 {mode === "create" && (
                   <div className="row">
                     <label className="label">ラウンド数
-                      <input className="input" type="number" min={1} max={10} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} />
+                      <input className="input" type="number" min={1} max={20} value={rounds} onChange={(e) => setRounds(Number(e.target.value))} />
                     </label>
                     <label className="label">制限時間（分）
                       <select className="input" value={roundTime} onChange={(e) => setRoundTime(Number(e.target.value))}>
@@ -245,7 +245,7 @@ export default function HomePage() {
               <li>誰かが正解すると、<strong>正解者に5点</strong>、<strong>出題者に3点</strong>が入ります。制限時間内に正解者がいない場合は、誰にも点数は入りません。</li>
               <li>描画は全員に<strong>リアルタイムで同期</strong>されます。ペンや消しゴムの使用、線の太さや色の変更も可能です。</li>
               <li>全ラウンド終了時に最も得点の高い参加者が<strong>優勝</strong>です。同点の場合は複数人が優勝となります。</li>
-              <li>1部屋につき最小3人、最大10人まで遊べます。</li>
+              <li>1部屋につき最小2人、最大20人まで遊べます。</li>
             </ul>
 
           </section>

@@ -818,7 +818,7 @@ export default function RoomPage() {
                 <label className='label'>
                   ラウンド数
                   <select className='input' value={nextRoundsTotal} onChange={(e) => setNextRoundsTotal(Number(e.target.value))}>
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map(n => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>

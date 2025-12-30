@@ -33,7 +33,7 @@
 ## DB 直接操作（RLS）
 - 回答投稿: `insert into guesses(room_id, round_id, member_id, content) values (...)`
   - `member_id` は `select my_member_id(:room_id)` で取得可能
-  - 正解判定・ポイント付与はトリガで自動計算（最初+5、以降0）
+  - 正解判定・ポイント付与はトリガで自動計算（最初+1、以降0）
 - 参加者離脱: `delete from room_members where id = :my_member_id`
   - ホストが離脱した場合、トリガでルーム自体が削除されます
 

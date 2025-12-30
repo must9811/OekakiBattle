@@ -51,7 +51,7 @@ CREATE TABLE public.rooms (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   password_hash text not null,
-  max_players int not null default 10 check (max_players between 2 and 10),
+  max_players int not null default 20 check (max_players between 2 and 20),
   rounds_total int not null default 3 check (rounds_total between 1 and 20),
   round_time_sec int not null default 60 check (round_time_sec between 30 and 300),
   status public.room_status not null default 'lobby',
@@ -216,10 +216,10 @@ BEGIN
     SELECT 1 FROM public.guesses g WHERE g.round_id = NEW.round_id AND g.is_correct
   ) INTO v_any_correct;
 
-  -- First-correct only: award +5, mark as correct. Otherwise, mark as incorrect and 0.
+  -- First-correct only: award +1, mark as correct. Otherwise, mark as incorrect and 0.
   IF NOT v_any_correct THEN
     NEW.is_correct := true;
-    NEW.awarded_points := 5;
+    NEW.awarded_points := 1;
   ELSE
     NEW.is_correct := false;
     NEW.awarded_points := 0;
@@ -258,7 +258,7 @@ WITH guess_scores AS (
          (CASE WHEN EXISTS (
             SELECT 1 FROM public.guesses g
             WHERE g.round_id = rd.id AND g.is_correct
-          ) THEN 3 ELSE 0 END)::int AS points
+          ) THEN 1 ELSE 0 END)::int AS points
   FROM public.rounds rd
 )
 SELECT room_id, member_id, sum(points)::int AS points
