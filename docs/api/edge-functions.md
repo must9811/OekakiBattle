@@ -33,7 +33,7 @@
 ## DB 直接操作（RLS）
 - 回答投稿: `insert into guesses(room_id, round_id, member_id, content) values (...)`
   - `member_id` は `select my_member_id(:room_id)` で取得可能
-  - 正解判定・ポイント付与はトリガで自動計算（最初+10、以降+5）
+  - 正解判定・ポイント付与はトリガで自動計算（最初+5、以降0）
 - 参加者離脱: `delete from room_members where id = :my_member_id`
   - ホストが離脱した場合、トリガでルーム自体が削除されます
 
@@ -41,4 +41,3 @@
 - DB変更: `rooms`, `room_members`, `rounds`, `guesses` を `postgres_changes` で購読
 - 描画同期: Realtime チャンネル `room:<room_id>` を使用し broadcast を活用
   - 例: `supabase.channel('room:' + roomId).on('broadcast', { event: 'stroke' }, cb).subscribe()`
-
