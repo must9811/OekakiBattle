@@ -128,7 +128,7 @@ $$;
 
 -- Membership helpers
 CREATE OR REPLACE FUNCTION public.is_room_member(p_room_id uuid)
-RETURNS boolean LANGUAGE sql STABLE AS $$
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET row_security = off AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.room_members m
     WHERE m.room_id = p_room_id AND m.user_id = auth.uid() AND m.left_at IS NULL
@@ -291,16 +291,9 @@ CREATE POLICY rooms_update_host ON public.rooms FOR UPDATE USING (auth.uid() = h
 CREATE POLICY rooms_delete_host ON public.rooms FOR DELETE USING (auth.uid() = host_user);
 
 -- Room members
--- Avoid recursive reference to room_members in its own policy to prevent 42P17
--- Allow users to select their own row; hosts can select all rows in their room
-CREATE POLICY room_members_select_self_or_host ON public.room_members
-  FOR SELECT USING (
-    room_members.user_id = auth.uid()
-    OR EXISTS (
-      SELECT 1 FROM public.rooms r
-      WHERE r.id = room_members.room_id AND r.host_user = auth.uid()
-    )
-  );
+-- Members can read all rows within their room (Realtime updates use RLS)
+CREATE POLICY room_members_select_same_room ON public.room_members
+  FOR SELECT USING (public.is_room_member(room_id));
 CREATE POLICY room_members_insert_join ON public.room_members
   FOR INSERT WITH CHECK (auth.uid() = user_id AND EXISTS (SELECT 1 FROM public.rooms r WHERE r.id = room_id));
 CREATE POLICY room_members_update_self ON public.room_members FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);

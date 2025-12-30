@@ -60,7 +60,7 @@
 
 ## RLSポリシー（要点）
 - rooms: `SELECT` 全員可、`INSERT` 認証済、`UPDATE/DELETE` ホストのみ
-- room_members: 自分の行は参照可、ホストは自ルームの全行参照可。`INSERT/UPDATE/DELETE` は本人のみ
+- room_members: 同一ルームのメンバーは全行参照可。`INSERT/UPDATE/DELETE` は本人のみ
 - rounds: 同一ルームのみ参照可。書き込みはホストのみ
 - guesses: 同一ルーム参照可、`INSERT` はメンバーかつ出題者でないこと
 
