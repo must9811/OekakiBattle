@@ -1,6 +1,6 @@
 # DB設計書（MVP v1 実装同期）
 
-本ドキュメントは「オンラインお絵描きあてバトル」MVPのSupabase(PostgreSQL)設計を示します。UIはログイン無しですが、クライアントでは Supabase の匿名サインインを使用し、RLS を有効化しています。
+本ドキュメントは「オンラインお絵描きあてバトル」v1.1のSupabase(PostgreSQL)設計を示します。ログインは任意で、ログイン時は Supabase Auth を使用し、RLS を有効化しています。
 
 ## 目的
 - ルーム単位の一時的な対戦体験を支える最小DB
@@ -26,6 +26,19 @@
 
 - v_room_scores（ビュー）
   - スコア集計ビュー。回答ポイント合計 + 出題者ボーナス（そのラウンドで正解者がいれば+1）を合算
+
+- profiles
+  - `auth.users` と1:1のプロフィール
+  - `username` は表示名/検索用にユニーク
+
+- game_sessions
+  - 対戦履歴ヘッダ（開始/終了、部屋名、設定）
+
+- game_participants
+  - 対戦履歴の参加者とスコア
+
+- round_snapshots
+  - ラウンド終了時の絵（Storage URL）とお題/正解者
 
 ## 主要関数/トリガ
 - `normalize_text(text)`
@@ -63,6 +76,10 @@
 - room_members: 同一ルームのメンバーは全行参照可。`INSERT/UPDATE/DELETE` は本人のみ
 - rounds: 同一ルームのみ参照可。書き込みはホストのみ
 - guesses: 同一ルーム参照可、`INSERT` はメンバーかつ出題者でないこと
+- profiles: 本人のみ参照/更新
+- game_sessions: 自分が参加したセッションのみ参照可
+- game_participants: セッション参加者のみ参照可
+- round_snapshots: セッション参加者のみ参照可
 
 ## Realtime
 - `supabase_realtime` パブリケーションに `rooms`, `room_members`, `rounds`, `guesses` を追加

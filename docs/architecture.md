@@ -2,8 +2,8 @@
 
 ## 全体像
 - フロントエンド: Next.js（Netlify デプロイ）
-- バックエンド: Supabase（PostgreSQL, Realtime, Edge Functions）
-- 認証: 匿名サインイン（クライアントから `supabase.auth.signInAnonymously()`）
+- バックエンド: Supabase（PostgreSQL, Realtime, Edge Functions, Storage）
+-- 認証: Supabase Auth（メール/パスワード、任意）
 
 ## データフロー
 - ルーム作成/入室: フロント → Edge Functions（`create-room` / `join-room`）→ RPC 実行
@@ -23,7 +23,9 @@
 - UI では部屋名重複/満員/パスワード不一致などを日本語化して表示
 
 ## セキュリティ
-- RLS によりルームスコープでのアクセス制御を実施
-- パスワードは pgcrypto.crypt でハッシュ
+- RLS によりルーム/履歴スコープでのアクセス制御を実施
+- ルームパスワードは pgcrypto.crypt でハッシュ
 - ホスト退室/終了でルームを削除（クリーンアップ）
-
+## 追加機能（ログイン後）
+- ゲーム履歴（いつ、どの部屋で、誰と、スコア、ラウンド絵）を保存
+- アカウント設定（ユーザー名/パスワード変更）

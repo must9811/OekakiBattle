@@ -34,7 +34,7 @@
   - `supabase functions deploy end-game`
 
 ## フロント接続メモ
-- 匿名サインイン: `await supabase.auth.signInAnonymously()`
+- 認証: `supabase.auth.signUp/signInWithPassword`（メール/パスワード、任意ログイン）
 - 参加フロー
   1. ルーム作成 or 参加（Edge Function）
   2. `my_member_id(room_id)` を取得

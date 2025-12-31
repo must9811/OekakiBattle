@@ -1,21 +1,80 @@
 ﻿"use client"
 import { supabase } from "@/lib/supabaseClient"
 import { useAnonAuth } from "@/lib/useAnonAuth"
-import { FormEvent, useMemo, useState } from "react"
+import { User } from "@supabase/supabase-js"
+import { FormEvent, useEffect, useMemo, useState } from "react"
 
 type FieldErrors = { name?: string; password?: string; username?: string }
 
 export default function HomePage() {
   const ready = useAnonAuth()
   const [mode, setMode] = useState<"none" | "create" | "join">("none")
+  const [loginMode, setLoginMode] = useState<"none" | "login" | "signup">("none")
   const [name, setName] = useState("")
   const [password, setPassword] = useState("")
   const [username, setUsername] = useState("")
+  const [loginUsername, setLoginUsername] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+  const [signupEmail, setSignupEmail] = useState("")
+  const [signupUsername, setSignupUsername] = useState("")
+  const [signupPassword, setSignupPassword] = useState("")
+  const [signupPasswordConfirm, setSignupPasswordConfirm] = useState("")
   const [rounds, setRounds] = useState(3)
   const [roundTime, setRoundTime] = useState(60)
   const [loading, setLoading] = useState(false)
+  const [authLoading, setAuthLoading] = useState(false)
   const [error, setError] = useState<string | undefined>()
   const [errors, setErrors] = useState<FieldErrors>({})
+  const [loginError, setLoginError] = useState<string | undefined>()
+  const [signupErrors, setSignupErrors] = useState<{
+    email?: string
+    username?: string
+    password?: string
+    passwordConfirm?: string
+    form?: string
+  }>({})
+  const [authUser, setAuthUser] = useState<User | null>(null)
+  const [profileName, setProfileName] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    const load = async () => {
+      const { data } = await supabase.auth.getUser()
+      if (!mounted) return
+      setAuthUser(data.user ?? null)
+      if (data.user && !data.user.is_anonymous) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("username")
+          .eq("user_id", data.user.id)
+          .maybeSingle()
+        if (mounted) setProfileName(profile?.username ?? null)
+      } else if (mounted) {
+        setProfileName(null)
+      }
+    }
+    load()
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user ?? null
+      setAuthUser(user)
+      if (!user || user.is_anonymous) {
+        setProfileName(null)
+        return
+      }
+      supabase
+        .from("profiles")
+        .select("username")
+        .eq("user_id", user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (mounted) setProfileName(data?.username ?? null)
+        })
+    })
+    return () => {
+      mounted = false
+      listener?.subscription?.unsubscribe()
+    }
+  }, [])
 
   const trimmed = useMemo(() => ({
     name: name.trim(),
@@ -141,6 +200,149 @@ export default function HomePage() {
     }
   }
 
+  async function onLoginSubmit(e: FormEvent) {
+    e.preventDefault()
+    setLoginError(undefined)
+    const trimmedUsername = loginUsername.trim()
+    if (!trimmedUsername || !loginPassword) {
+      setLoginError("ユーザー名とパスワードを入力してください。")
+      return
+    }
+    setAuthLoading(true)
+    try {
+      const { data, error: lookupError } = await supabase.rpc("get_login_email", {
+        p_username: trimmedUsername,
+      })
+      if (lookupError) throw lookupError
+      const email = typeof data === "string" ? data : null
+      if (!email) {
+        setLoginError("ユーザー名またはパスワードが違います。")
+        return
+      }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: loginPassword,
+      })
+      if (signInError) {
+        setLoginError("ユーザー名またはパスワードが違います。")
+        return
+      }
+      setLoginMode("none")
+      setLoginUsername("")
+      setLoginPassword("")
+    } catch (e: any) {
+      setLoginError("ログインに失敗しました。時間をおいて再試行してください。")
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  async function onSignupSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSignupErrors({})
+    const email = signupEmail.trim()
+    const uname = signupUsername.trim()
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    const passwordOk = /^[A-Za-z0-9]{8,50}$/.test(signupPassword)
+    const nextErrors: typeof signupErrors = {}
+    if (!email) nextErrors.email = "メールアドレスを入力してください。"
+    if (!uname) nextErrors.username = "ユーザー名を入力してください。"
+    if (!signupPassword) nextErrors.password = "パスワードを入力してください。"
+    if (!signupPasswordConfirm) nextErrors.passwordConfirm = "パスワード再入力を入力してください。"
+    if (email && !emailOk) nextErrors.email = "メールアドレスの形式が正しくありません。"
+    if (uname && (uname.length < 1 || uname.length > 20)) nextErrors.username = "ユーザー名は1〜20文字で入力してください。"
+    if (signupPassword && !passwordOk) nextErrors.password = "パスワードは8〜50文字の英数字で入力してください。"
+    if (signupPassword && signupPasswordConfirm && signupPassword !== signupPasswordConfirm) {
+      nextErrors.passwordConfirm = "パスワードが一致しません。"
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setSignupErrors(nextErrors)
+      return
+    }
+    setAuthLoading(true)
+    try {
+      const { data, error: signUpError } = await supabase.functions.invoke("sign-up", {
+        body: { email, username: uname, password: signupPassword },
+      })
+      const getSignUpCode = async () => {
+        if (typeof data?.error === "string") return data.error
+        const ctx = (signUpError as any)?.context as any
+        if (ctx && typeof ctx === "object" && typeof ctx.text === "function") {
+          try {
+            const res: Response = ctx
+            const clone = res.clone()
+            try {
+              const parsed = await clone.json()
+              if (typeof parsed?.error === "string") return parsed.error
+            } catch {}
+            const raw = await res.text()
+            if (raw) {
+              if (raw.includes("duplicate_username")) return "duplicate_username"
+              if (raw.includes("email_taken")) return "email_taken"
+              if (raw.includes("invalid_email")) return "invalid_email"
+              if (raw.includes("weak_password")) return "weak_password"
+            }
+          } catch {}
+        }
+        const msg = signUpError?.message || ""
+        if (msg.includes("duplicate_username")) return "duplicate_username"
+        if (msg.includes("email_taken")) return "email_taken"
+        if (msg.includes("invalid_email")) return "invalid_email"
+        if (msg.includes("weak_password")) return "weak_password"
+        return undefined
+      }
+      const code = await getSignUpCode()
+      if (signUpError || code) {
+        switch (code) {
+          case "duplicate_username":
+            setSignupErrors({ username: "そのユーザー名は既に使われています。" })
+            return
+          case "email_taken":
+            setSignupErrors({ email: "そのメールアドレスは既に登録されています。" })
+            return
+          case "invalid_email":
+            setSignupErrors({ email: "メールアドレスの形式が正しくありません。" })
+            return
+          case "weak_password":
+            setSignupErrors({ password: "パスワードは8〜50文字の英数字で入力してください。" })
+            return
+          default:
+            setSignupErrors({ form: "アカウント登録に失敗しました。時間をおいて再試行してください。" })
+            return
+        }
+      }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: signupPassword,
+      })
+      if (signInError) {
+        setSignupErrors({ form: "登録後のログインに失敗しました。ログイン画面からお試しください。" })
+        return
+      }
+      setLoginMode("none")
+      setSignupEmail("")
+      setSignupUsername("")
+      setSignupPassword("")
+      setSignupPasswordConfirm("")
+    } catch (e: any) {
+      setSignupErrors({ form: "アカウント登録に失敗しました。時間をおいて再試行してください。" })
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  async function onLogout() {
+    setAuthLoading(true)
+    try {
+      await supabase.auth.signOut()
+      await supabase.auth.signInAnonymously()
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const isLoggedIn = !!authUser && !authUser.is_anonymous
+
   return (
     <div className="homeBg">
       <div className="doodles" aria-hidden>
@@ -172,10 +374,154 @@ export default function HomePage() {
         {!ready && <p className="subtitle">サインイン準備中…</p>}
         {ready && (
           <>
+            {!isLoggedIn && loginMode === "login" && (
+              <div className="modalBackdrop" onClick={() => setLoginMode("none")} role="presentation">
+                <div className="modalCard card" onClick={(e) => e.stopPropagation()}>
+                  <div className="panelHeader">
+                    <strong>ログイン</strong>
+                    <button className="button ghost" onClick={() => setLoginMode("none")}>閉じる</button>
+                  </div>
+                  <form onSubmit={onLoginSubmit} className="grid" style={{ gap: 10, marginTop: 12 }}>
+                    <label className="label">
+                      <span>ユーザー名</span>
+                      <input className="input" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} />
+                    </label>
+                    <label className="label">
+                      <span>パスワード</span>
+                      <input className="input" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
+                    </label>
+                    <div className="row">
+                      <button className="button" type="submit" disabled={authLoading}>
+                        {authLoading ? "ログイン中…" : "ログイン"}
+                      </button>
+                      {loginError && <span style={{ color: "#ff6b6b" }}>{loginError}</span>}
+                    </div>
+                    <button className="button ghost" type="button" onClick={() => setLoginMode("signup")}>
+                      アカウント登録はこちら
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {!isLoggedIn && loginMode === "signup" && (
+              <div className="modalBackdrop" onClick={() => setLoginMode("none")} role="presentation">
+                <div className="modalCard card" onClick={(e) => e.stopPropagation()}>
+                  <div className="panelHeader">
+                    <strong>アカウント登録</strong>
+                    <button className="button ghost" onClick={() => setLoginMode("none")}>閉じる</button>
+                  </div>
+                  <form onSubmit={onSignupSubmit} className="grid" style={{ gap: 10, marginTop: 12 }}>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>メールアドレス</span>
+                        <span className="helpIcon" data-tip="例: name@example.com の形式で入力してください。">？</span>
+                        {signupErrors.email && <span className="fieldError inline">{signupErrors.email}</span>}
+                      </div>
+                      <input
+                        className={`input${signupErrors.email ? " invalid" : ""}`}
+                        type="email"
+                        value={signupEmail}
+                        onChange={(e) => {
+                          setSignupEmail(e.target.value)
+                          if (signupErrors.email || signupErrors.form) {
+                            setSignupErrors(v => ({ ...v, email: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>ユーザー名</span>
+                        <span className="helpIcon" data-tip="1〜20文字。ほかのユーザーと重複不可。">？</span>
+                        {signupErrors.username && <span className="fieldError inline">{signupErrors.username}</span>}
+                      </div>
+                      <input
+                        className={`input${signupErrors.username ? " invalid" : ""}`}
+                        value={signupUsername}
+                        maxLength={20}
+                        onChange={(e) => {
+                          setSignupUsername(e.target.value)
+                          if (signupErrors.username || signupErrors.form) {
+                            setSignupErrors(v => ({ ...v, username: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>パスワード</span>
+                        <span className="helpIcon" data-tip="8〜50文字の英数字のみ使用できます。">？</span>
+                        {signupErrors.password && <span className="fieldError inline">{signupErrors.password}</span>}
+                      </div>
+                      <input
+                        className={`input${signupErrors.password ? " invalid" : ""}`}
+                        type="password"
+                        value={signupPassword}
+                        minLength={8}
+                        maxLength={50}
+                        onChange={(e) => {
+                          setSignupPassword(e.target.value)
+                          if (signupErrors.password || signupErrors.form) {
+                            setSignupErrors(v => ({ ...v, password: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>パスワード再入力</span>
+                        {signupErrors.passwordConfirm && <span className="fieldError inline">{signupErrors.passwordConfirm}</span>}
+                      </div>
+                      <input
+                        className={`input${signupErrors.passwordConfirm ? " invalid" : ""}`}
+                        type="password"
+                        value={signupPasswordConfirm}
+                        minLength={8}
+                        maxLength={50}
+                        onChange={(e) => {
+                          setSignupPasswordConfirm(e.target.value)
+                          if (signupErrors.passwordConfirm || signupErrors.form) {
+                            setSignupErrors(v => ({ ...v, passwordConfirm: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <div className="row">
+                      <button className="button" type="submit" disabled={authLoading}>
+                        {authLoading ? "登録中…" : "登録する"}
+                      </button>
+                      {signupErrors.form && <span className="fieldError">{signupErrors.form}</span>}
+                    </div>
+                    <button className="button ghost" type="button" onClick={() => setLoginMode("login")}>
+                      ログインへ戻る
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
             {mode === "none" && (
-              <div className="row" style={{ gap: 12 }}>
-                <button className="button" onClick={() => setMode("create")}>部屋を作成する</button>
-                <button className="button" onClick={() => setMode("join")}>部屋に入室する</button>
+              <div className="row" style={{ gap: 12, justifyContent: "space-between" }}>
+                <div className="row" style={{ gap: 12 }}>
+                  <button className="button" onClick={() => setMode("create")}>部屋を作成する</button>
+                  <button className="button" onClick={() => setMode("join")}>部屋に入室する</button>
+                </div>
+                {!isLoggedIn ? (
+                  <button className="button ghost" onClick={() => setLoginMode("login")}>
+                    🔐 ログイン
+                  </button>
+                ) : (
+                  <div className="row" style={{ gap: 8 }}>
+                    <div className="userBadge">
+                      <div className="userIcon" aria-hidden>👤</div>
+                      <div className="userName">{profileName ?? authUser?.email ?? "ユーザー"}</div>
+                    </div>
+                    <button className="button ghost" onClick={onLogout} disabled={authLoading}>
+                      {authLoading ? "処理中…" : "🚪 ログアウト"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

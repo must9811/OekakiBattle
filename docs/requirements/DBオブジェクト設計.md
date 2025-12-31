@@ -50,11 +50,25 @@ DBに定義される型/関数/トリガ/ビュー/ポリシーの責務を整�
 - `v_room_scores`
   - 回答ポイント + 出題者ボーナス(+1) の合算
 
+## 5.1 追加テーブル
+- `profiles`
+  - アカウントの表示名を保持
+- `game_sessions`
+  - 対戦履歴ヘッダ
+- `game_participants`
+  - セッション参加者とスコア
+- `round_snapshots`
+  - ラウンド絵の保存先（Storage URL）
+
 ## 6. RLSポリシー（要点）
 - rooms: 参照は全員、更新/削除はホスト
 - room_members: 同一ルームのメンバーは全行参照可（Realtime購読のため）
 - rounds: 参照は同ルーム、更新はホスト
 - guesses: 参照は同ルーム、挿入はメンバーかつ出題者以外
+- profiles: 本人のみ参照/更新
+- game_sessions: セッション参加者のみ参照
+- game_participants: セッション参加者のみ参照
+- round_snapshots: セッション参加者のみ参照
 
 ## 7. Realtime 公開
 - `supabase_realtime` に `rooms/room_members/rounds/guesses` を登録
