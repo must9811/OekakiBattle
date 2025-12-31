@@ -9,16 +9,21 @@ type FieldErrors = { name?: string; password?: string; username?: string }
 export default function HomePage() {
   const ready = useAnonAuth()
   const [mode, setMode] = useState<"none" | "create" | "join">("none")
-  const [loginMode, setLoginMode] = useState<"none" | "login" | "signup">("none")
+  const [loginMode, setLoginMode] = useState<"none" | "login" | "signup" | "reset">("none")
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [name, setName] = useState("")
   const [password, setPassword] = useState("")
   const [username, setUsername] = useState("")
   const [loginUsername, setLoginUsername] = useState("")
   const [loginPassword, setLoginPassword] = useState("")
+  const [resetUsername, setResetUsername] = useState("")
   const [signupEmail, setSignupEmail] = useState("")
   const [signupUsername, setSignupUsername] = useState("")
   const [signupPassword, setSignupPassword] = useState("")
   const [signupPasswordConfirm, setSignupPasswordConfirm] = useState("")
+  const [settingsUsername, setSettingsUsername] = useState("")
+  const [settingsPassword, setSettingsPassword] = useState("")
+  const [settingsPasswordConfirm, setSettingsPasswordConfirm] = useState("")
   const [rounds, setRounds] = useState(3)
   const [roundTime, setRoundTime] = useState(60)
   const [loading, setLoading] = useState(false)
@@ -26,8 +31,19 @@ export default function HomePage() {
   const [error, setError] = useState<string | undefined>()
   const [errors, setErrors] = useState<FieldErrors>({})
   const [loginError, setLoginError] = useState<string | undefined>()
+  const [resetErrors, setResetErrors] = useState<{
+    username?: string
+    form?: string
+  }>({})
+  const [resetSuccess, setResetSuccess] = useState<string | undefined>()
   const [signupErrors, setSignupErrors] = useState<{
     email?: string
+    username?: string
+    password?: string
+    passwordConfirm?: string
+    form?: string
+  }>({})
+  const [settingsErrors, setSettingsErrors] = useState<{
     username?: string
     password?: string
     passwordConfirm?: string
@@ -48,7 +64,10 @@ export default function HomePage() {
           .select("username")
           .eq("user_id", data.user.id)
           .maybeSingle()
-        if (mounted) setProfileName(profile?.username ?? null)
+        if (mounted) {
+          setProfileName(profile?.username ?? null)
+          setSettingsUsername(profile?.username ?? "")
+        }
       } else if (mounted) {
         setProfileName(null)
       }
@@ -67,7 +86,10 @@ export default function HomePage() {
         .eq("user_id", user.id)
         .maybeSingle()
         .then(({ data }) => {
-          if (mounted) setProfileName(data?.username ?? null)
+          if (mounted) {
+            setProfileName(data?.username ?? null)
+            setSettingsUsername(data?.username ?? "")
+          }
         })
     })
     return () => {
@@ -237,6 +259,43 @@ export default function HomePage() {
     }
   }
 
+  async function onResetSubmit(e: FormEvent) {
+    e.preventDefault()
+    setResetErrors({})
+    setResetSuccess(undefined)
+    const uname = resetUsername.trim()
+    if (!uname) {
+      setResetErrors({ username: "ユーザー名を入力してください。" })
+      return
+    }
+    setAuthLoading(true)
+    try {
+      const { data, error: lookupError } = await supabase.rpc("get_login_email", {
+        p_username: uname,
+      })
+      if (lookupError) {
+        setResetErrors({ form: "パスワード再設定に失敗しました。時間をおいて再試行してください。" })
+        return
+      }
+      const email = typeof data === "string" ? data : null
+      if (!email) {
+        setResetErrors({ username: "ユーザー名が見つかりません。" })
+        return
+      }
+      const redirectTo = `${window.location.origin}/reset-password`
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+      if (resetError) {
+        setResetErrors({ form: "パスワード再設定に失敗しました。時間をおいて再試行してください。" })
+        return
+      }
+      setResetSuccess("パスワード再設定メールを送信しました。")
+    } catch (e: any) {
+      setResetErrors({ form: "パスワード再設定に失敗しました。時間をおいて再試行してください。" })
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
   async function onSignupSubmit(e: FormEvent) {
     e.preventDefault()
     setSignupErrors({})
@@ -341,6 +400,56 @@ export default function HomePage() {
     }
   }
 
+  async function onSettingsSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSettingsErrors({})
+    const uname = settingsUsername.trim()
+    const passwordOk = settingsPassword ? /^[A-Za-z0-9]{8,50}$/.test(settingsPassword) : true
+    const nextErrors: typeof settingsErrors = {}
+    if (uname.length < 1 || uname.length > 20) nextErrors.username = "ユーザー名は1〜20文字で入力してください。"
+    if (settingsPassword && !passwordOk) nextErrors.password = "パスワードは8〜50文字の英数字で入力してください。"
+    if (settingsPassword && settingsPasswordConfirm && settingsPassword !== settingsPasswordConfirm) {
+      nextErrors.passwordConfirm = "パスワードが一致しません。"
+    }
+    if (settingsPassword && !settingsPasswordConfirm) nextErrors.passwordConfirm = "パスワード再入力を入力してください。"
+    if (Object.keys(nextErrors).length > 0) {
+      setSettingsErrors(nextErrors)
+      return
+    }
+    setAuthLoading(true)
+    try {
+      if (authUser && uname && uname !== profileName) {
+        const { error: updateProfileError } = await supabase
+          .from("profiles")
+          .update({ username: uname })
+          .eq("user_id", authUser.id)
+        if (updateProfileError) {
+          const msg = String(updateProfileError.message || "")
+          const dup = updateProfileError.code === "23505" || msg.includes("duplicate") || msg.includes("unique")
+          setSettingsErrors({ username: dup ? "そのユーザー名は既に使われています。" : "ユーザー名の更新に失敗しました。" })
+          return
+        }
+        setProfileName(uname)
+      }
+      if (settingsPassword) {
+        const { error: updatePasswordError } = await supabase.auth.updateUser({
+          password: settingsPassword,
+        })
+        if (updatePasswordError) {
+          setSettingsErrors({ password: "パスワードの更新に失敗しました。" })
+          return
+        }
+      }
+      setSettingsPassword("")
+      setSettingsPasswordConfirm("")
+      setSettingsOpen(false)
+    } catch (e: any) {
+      setSettingsErrors({ form: "設定の更新に失敗しました。時間をおいて再試行してください。" })
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
   const isLoggedIn = !!authUser && !authUser.is_anonymous
 
   return (
@@ -396,8 +505,51 @@ export default function HomePage() {
                       </button>
                       {loginError && <span style={{ color: "#ff6b6b" }}>{loginError}</span>}
                     </div>
+                    <button className="button ghost" type="button" onClick={() => setLoginMode("reset")}>
+                      パスワードを忘れた方
+                    </button>
                     <button className="button ghost" type="button" onClick={() => setLoginMode("signup")}>
                       アカウント登録はこちら
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {!isLoggedIn && loginMode === "reset" && (
+              <div className="modalBackdrop" onClick={() => setLoginMode("none")} role="presentation">
+                <div className="modalCard card" onClick={(e) => e.stopPropagation()}>
+                  <div className="panelHeader">
+                    <strong>パスワード再設定</strong>
+                    <button className="button ghost" onClick={() => setLoginMode("none")}>閉じる</button>
+                  </div>
+                  <form onSubmit={onResetSubmit} className="grid" style={{ gap: 10, marginTop: 12 }}>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>ユーザー名</span>
+                        <span className="helpIcon" data-tip="登録済みのユーザー名を入力してください。">？</span>
+                        {resetErrors.username && <span className="fieldError inline">{resetErrors.username}</span>}
+                      </div>
+                      <input
+                        className={`input${resetErrors.username ? " invalid" : ""}`}
+                        value={resetUsername}
+                        onChange={(e) => {
+                          setResetUsername(e.target.value)
+                          if (resetErrors.username || resetErrors.form) {
+                            setResetErrors(v => ({ ...v, username: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <div className="row">
+                      <button className="button" type="submit" disabled={authLoading}>
+                        {authLoading ? "送信中…" : "再設定メールを送信"}
+                      </button>
+                      {resetErrors.form && <span className="fieldError">{resetErrors.form}</span>}
+                      {resetSuccess && <span className="fieldSuccess">{resetSuccess}</span>}
+                    </div>
+                    <button className="button ghost" type="button" onClick={() => setLoginMode("login")}>
+                      ログインへ戻る
                     </button>
                   </form>
                 </div>
@@ -501,6 +653,82 @@ export default function HomePage() {
               </div>
             )}
 
+            {isLoggedIn && settingsOpen && (
+              <div className="modalBackdrop" onClick={() => setSettingsOpen(false)} role="presentation">
+                <div className="modalCard card" onClick={(e) => e.stopPropagation()}>
+                  <div className="panelHeader">
+                    <strong>ユーザー設定</strong>
+                    <button className="button ghost" onClick={() => setSettingsOpen(false)}>閉じる</button>
+                  </div>
+                  <form onSubmit={onSettingsSubmit} className="grid" style={{ gap: 10, marginTop: 12 }}>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>ユーザー名</span>
+                        <span className="helpIcon" data-tip="1〜20文字。ほかのユーザーと重複不可。">？</span>
+                        {settingsErrors.username && <span className="fieldError inline">{settingsErrors.username}</span>}
+                      </div>
+                      <input
+                        className={`input${settingsErrors.username ? " invalid" : ""}`}
+                        value={settingsUsername}
+                        maxLength={20}
+                        onChange={(e) => {
+                          setSettingsUsername(e.target.value)
+                          if (settingsErrors.username || settingsErrors.form) {
+                            setSettingsErrors(v => ({ ...v, username: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>新しいパスワード</span>
+                        <span className="helpIcon" data-tip="8〜50文字の英数字のみ使用できます。">？</span>
+                        {settingsErrors.password && <span className="fieldError inline">{settingsErrors.password}</span>}
+                      </div>
+                      <input
+                        className={`input${settingsErrors.password ? " invalid" : ""}`}
+                        type="password"
+                        value={settingsPassword}
+                        minLength={8}
+                        maxLength={50}
+                        onChange={(e) => {
+                          setSettingsPassword(e.target.value)
+                          if (settingsErrors.password || settingsErrors.form) {
+                            setSettingsErrors(v => ({ ...v, password: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="label">
+                      <div className="labelHead">
+                        <span>パスワード再入力</span>
+                        {settingsErrors.passwordConfirm && <span className="fieldError inline">{settingsErrors.passwordConfirm}</span>}
+                      </div>
+                      <input
+                        className={`input${settingsErrors.passwordConfirm ? " invalid" : ""}`}
+                        type="password"
+                        value={settingsPasswordConfirm}
+                        minLength={8}
+                        maxLength={50}
+                        onChange={(e) => {
+                          setSettingsPasswordConfirm(e.target.value)
+                          if (settingsErrors.passwordConfirm || settingsErrors.form) {
+                            setSettingsErrors(v => ({ ...v, passwordConfirm: undefined, form: undefined }))
+                          }
+                        }}
+                      />
+                    </label>
+                    <div className="row">
+                      <button className="button" type="submit" disabled={authLoading}>
+                        {authLoading ? "更新中…" : "保存する"}
+                      </button>
+                      {settingsErrors.form && <span className="fieldError">{settingsErrors.form}</span>}
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
             {mode === "none" && (
               <div className="row" style={{ gap: 12, justifyContent: "space-between" }}>
                 <div className="row" style={{ gap: 12 }}>
@@ -513,7 +741,13 @@ export default function HomePage() {
                   </button>
                 ) : (
                   <div className="row" style={{ gap: 8 }}>
-                    <div className="userBadge">
+                    <div
+                      className="userBadge clickable"
+                      onClick={() => setSettingsOpen(true)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setSettingsOpen(true) }}
+                      role="button"
+                      tabIndex={0}
+                    >
                       <div className="userIcon" aria-hidden>👤</div>
                       <div className="userName">{profileName ?? authUser?.email ?? "ユーザー"}</div>
                     </div>

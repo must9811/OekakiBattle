@@ -88,6 +88,7 @@ body{
 .input.invalid{ border-color:#ff6b6b }
 .fieldError{ color:#ff6b6b; font-size:.85rem }
 .fieldError.inline{ margin-left:auto; font-size:.8rem }
+.fieldSuccess{ color:#16a34a; font-size:.85rem }
 .label{ display:grid; gap:6px }
 .labelHead{ display:flex; align-items:center; gap:6px }
 .helpIcon{
@@ -154,6 +155,7 @@ body{
   gap:4px;
   min-width:88px;
 }
+.userBadge.clickable{ cursor:pointer }
 .userIcon{
   width:32px;
   height:32px;
