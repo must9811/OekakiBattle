@@ -14,7 +14,7 @@
   - `SUPABASE_ANON_KEY`
 
 ## DB 反映手順
-1. `supabase/sql/000_init_oekaki_battle.sql` を適用（初期化/関数/トリガ/シードを一括）
+1. `supabase/sql/` 配下の SQL を順番に適用（初期化/関数/トリガ/シード）
 2. 確認
    - `select * from prompts;` がデータ入り
    - RLS 有効（匿名サインイン後のクエリでアクセス）

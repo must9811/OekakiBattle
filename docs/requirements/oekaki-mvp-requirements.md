@@ -186,7 +186,7 @@
 
 ## 8. データモデル概要（Supabase / PostgreSQL）
 
-> すべて RLS 有効。room_id 等は uuid。定義は `supabase/sql/000_init_oekaki_battle.sql` を参照。
+> すべて RLS 有効。room_id 等は uuid。定義は `supabase/sql/` 配下を参照。
 
 - rooms: ルーム本体（status: lobby/in_progress/finished、host_user、round_time_sec, rounds_total）
 - room_members: ルーム参加者（left_at で退出管理、ホスト行削除でルーム削除）

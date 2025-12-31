@@ -734,6 +734,15 @@ export default function HomePage() {
                 <div className="row" style={{ gap: 12 }}>
                   <button className="button" onClick={() => setMode("create")}>部屋を作成する</button>
                   <button className="button" onClick={() => setMode("join")}>部屋に入室する</button>
+                  <button
+                    className="button ghost"
+                    onClick={() => {
+                      if (isLoggedIn) window.location.href = "/history"
+                      else setLoginMode("login")
+                    }}
+                  >
+                    🗂️ プレイ履歴
+                  </button>
                 </div>
                 {!isLoggedIn ? (
                   <button className="button ghost" onClick={() => setLoginMode("login")}>

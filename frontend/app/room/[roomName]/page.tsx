@@ -59,6 +59,8 @@ export default function RoomPage() {
   const overlayIntervalRef = useRef<number | null>(null)
   const overlayTimeoutRef = useRef<number | null>(null)
   const suppressUntilRef = useRef<number | null>(null)
+  const historySavedRef = useRef(false)
+  const roundSnapshotsRef = useRef<RoundSnapshot[]>([])
   // Flowing comments over canvas (NicoNico-like)
   type FlyItem = { id: number, text: string, top: number }
   const [flyItems, setFlyItems] = useState<FlyItem[]>([])
@@ -251,6 +253,10 @@ export default function RoomPage() {
   }, [ready, roomName])
 
   useEffect(() => {
+    roundSnapshotsRef.current = roundSnapshots
+  }, [roundSnapshots])
+
+  useEffect(() => {
     if (!room) return
     setNextRoundsTotal(Number(room.rounds_total || 3))
     setNextRoundTimeSec(Number(room.round_time_sec || 60))
@@ -260,6 +266,7 @@ export default function RoomPage() {
   useEffect(() => {
     if (!room) return
     if (room.status !== 'finished') {
+      historySavedRef.current = false
       if (showResult) setShowResult(false)
       return
     }
@@ -640,12 +647,195 @@ export default function RoomPage() {
   const isGameFinished = room?.status === 'finished'
   const isFinished = isGameFinished && showResult
 
+  useEffect(() => {
+    if (!isFinished) return
+    if (historySavedRef.current) return
+    void saveGameHistory()
+  }, [isFinished])
+
   async function endGame() {
     if (!room) return
     const token = (await supabase.auth.getSession()).data.session?.access_token
     const { error } = await supabase.functions.invoke('end-game', { body: { roomId: room.id }, headers: token ? { Authorization: `Bearer ${token}` } : undefined })
     if (error) setMessages(m => [...m, `終了エラー: ${error.message}`])
     else window.location.href = '/'
+  }
+
+  async function saveGameHistory() {
+    if (historySavedRef.current) return
+    const roomId = roomIdRef.current
+    if (!roomId || !room) return
+    const { data: userData } = await supabase.auth.getUser()
+    const user = userData.user
+    if (!user || user.is_anonymous) return
+    const { data: sessionData } = await supabase.auth.getSession()
+    const session = sessionData.session
+    console.info('[history] save start', {
+      roomId,
+      roomName: room.name,
+      hostUserId: room.host_user,
+      userId: user.id,
+      isAnonymous: user.is_anonymous,
+      sessionUserId: session?.user?.id ?? null,
+      hasAccessToken: !!session?.access_token,
+    })
+    const { data: roomRow, error: roomError } = await supabase
+      .from('rooms')
+      .select('id,host_user,status')
+      .eq('id', roomId)
+      .maybeSingle()
+    console.info('[history] room check', {
+      roomId,
+      room: roomRow ?? null,
+      error: roomError?.message ?? null,
+    })
+    const { data: profileRow, error: profileError } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    console.info('[history] profile check', {
+      userId: user.id,
+      username: (profileRow as any)?.username ?? null,
+      error: profileError?.message ?? null,
+    })
+    const { data: debugRow, error: debugError } = await supabase
+      .rpc('debug_history_policy', { p_room_id: roomId })
+    console.info('[history] policy debug', {
+      data: debugRow ?? null,
+      error: debugError?.message ?? null,
+    })
+    if (debugRow) {
+      console.info('[history] policy debug raw', JSON.stringify(debugRow))
+    }
+    historySavedRef.current = true
+    try {
+      const { data: roundRows } = await supabase
+        .from('rounds')
+        .select('id,number,prompt_id,drawer_member_id,started_at,ended_at')
+        .eq('room_id', roomId)
+      const rounds = (roundRows as any[]) || []
+      const startedAt = rounds
+        .map(r => r.started_at)
+        .filter(Boolean)
+        .sort()[0] ?? new Date().toISOString()
+      const endedAt = rounds
+        .map(r => r.ended_at)
+        .filter(Boolean)
+        .sort()
+        .slice(-1)[0] ?? new Date().toISOString()
+
+      const { data: sessionId, error: sessionError } = await supabase
+        .rpc('upsert_game_session', {
+          p_room_id: roomId,
+          p_room_name: room.name,
+          p_host_user_id: room.host_user,
+          p_rounds_total: room.rounds_total,
+          p_round_time_sec: room.round_time_sec,
+          p_started_at: startedAt,
+          p_ended_at: endedAt,
+        })
+      if (sessionError || !sessionId) {
+        console.error('[history] game_sessions upsert failed', {
+          roomId,
+          userId: user.id,
+          hostUserId: room.host_user,
+          message: sessionError?.message,
+          details: sessionError?.details,
+          hint: sessionError?.hint,
+          code: sessionError?.code,
+        })
+        historySavedRef.current = false
+        const msg = sessionError?.message ? `履歴の保存に失敗しました: ${sessionError.message}` : '履歴の保存に失敗しました。'
+        setMessages(m => [...m, msg])
+        return
+      }
+      const sessionIdStr = sessionId as string
+
+      const { data: memberRows } = await supabase
+        .from('room_members')
+        .select('id,user_id,username,is_host,joined_at,left_at')
+        .eq('room_id', roomId)
+      const membersData = (memberRows as any[]) || []
+      const memberMatch = membersData.find(m => m.user_id === user.id)
+      console.info('[history] room_members', {
+        count: membersData.length,
+        hasSelf: !!memberMatch,
+        selfMemberId: memberMatch?.id ?? null,
+      })
+      const memberById = new Map(membersData.map(m => [m.id as string, m]))
+
+      const participants = membersData.map(m => ({
+        session_id: sessionIdStr,
+        user_id: m.user_id,
+        username_at_time: m.username,
+        is_host: m.is_host,
+        score: typeof scores[m.id as string] === 'number' ? scores[m.id as string] : 0,
+        joined_at: m.joined_at,
+        left_at: m.left_at,
+      }))
+      if (participants.length > 0) {
+        const { error: participantsError } = await supabase
+          .rpc('upsert_game_participants', { p_rows: participants })
+        if (participantsError) {
+          historySavedRef.current = false
+          setMessages(m => [...m, `履歴の保存に失敗しました: ${participantsError.message}`])
+          return
+        }
+      }
+
+      const promptIds = Array.from(new Set(rounds.map(r => r.prompt_id).filter(Boolean)))
+      const { data: promptRows } = promptIds.length > 0
+        ? await supabase.from('prompts').select('id,word').in('id', promptIds as string[])
+        : { data: [] as any[] }
+      const promptWordById = new Map((promptRows as any[]).map(p => [p.id as string, p.word as string]))
+
+      const { data: guessRows } = await supabase
+        .from('guesses')
+        .select('round_id,member_id,created_at,content')
+        .eq('room_id', roomId)
+        .eq('is_correct', true)
+        .order('created_at', { ascending: true })
+      const winnerByRound = new Map<string, { member_id: string; content: string }>()
+      for (const g of (guessRows as any[]) || []) {
+        if (!winnerByRound.has(g.round_id)) {
+          winnerByRound.set(g.round_id, { member_id: g.member_id, content: g.content })
+        }
+      }
+
+      const snapshots = roundSnapshotsRef.current
+      const snapshotRows = snapshots.map(s => {
+        const roundRow = rounds.find(r => r.id === s.roundId)
+        if (!roundRow) return null
+        const drawerMember = memberById.get(roundRow.drawer_member_id)
+        const winner = winnerByRound.get(roundRow.id)
+        const winnerMember = winner ? memberById.get(winner.member_id) : null
+        const promptWord = promptWordById.get(roundRow.prompt_id) ?? s.promptWord ?? '不明'
+        return {
+          session_id: sessionIdStr,
+          round_number: roundRow.number,
+          drawer_user_id: drawerMember?.user_id ?? null,
+          prompt_id: roundRow.prompt_id,
+          prompt_word: promptWord,
+          image_url: s.dataUrl,
+          correct_user_id: winnerMember?.user_id ?? null,
+          correct_answer: winner?.content ?? null,
+        }
+      }).filter(Boolean) as any[]
+
+      if (snapshotRows.length > 0) {
+        const { error: snapshotError } = await supabase
+          .rpc('upsert_round_snapshots', { p_rows: snapshotRows })
+        if (snapshotError) {
+          historySavedRef.current = false
+          setMessages(m => [...m, `履歴の保存に失敗しました: ${snapshotError.message}`])
+          return
+        }
+      }
+    } catch (e) {
+      historySavedRef.current = false
+      setMessages(m => [...m, '履歴の保存に失敗しました。'])
+    }
   }
 
   async function leaveRoom() {

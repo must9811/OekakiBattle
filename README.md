@@ -39,7 +39,7 @@ npm run dev
 ```
 
 ### DB初期化
-Supabase プロジェクトに `supabase/sql/000_init_oekaki_battle.sql` を適用してください。
+Supabase プロジェクトに `supabase/sql/` 配下の SQL を順番に適用してください。
 
 ### Edge Functions
 ```bash

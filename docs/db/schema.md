@@ -38,7 +38,7 @@
   - 対戦履歴の参加者とスコア
 
 - round_snapshots
-  - ラウンド終了時の絵（Storage URL）とお題/正解者
+  - ラウンド終了時の絵（MVPは data URL を格納）とお題/正解者
 
 ## 主要関数/トリガ
 - `normalize_text(text)`
@@ -80,6 +80,7 @@
 - game_sessions: 自分が参加したセッションのみ参照可
 - game_participants: セッション参加者のみ参照可
 - round_snapshots: セッション参加者のみ参照可
+- 履歴系の書き込み: ルームメンバー（user_id またはプロフィールのユーザー名一致）またはホストのみ可
 
 ## Realtime
 - `supabase_realtime` パブリケーションに `rooms`, `room_members`, `rounds`, `guesses` を追加

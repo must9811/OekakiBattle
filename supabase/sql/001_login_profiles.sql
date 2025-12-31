@@ -7,9 +7,19 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at timestamptz not null default now()
 );
 
-ALTER TABLE public.profiles
-  ADD CONSTRAINT ck_profiles_username_length
-  CHECK (char_length(username) between 1 and 20);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'ck_profiles_username_length'
+      AND conrelid = 'public.profiles'::regclass
+  ) THEN
+    ALTER TABLE public.profiles
+      ADD CONSTRAINT ck_profiles_username_length
+      CHECK (char_length(username) between 1 and 20);
+  END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.touch_profiles_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$

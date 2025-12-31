@@ -30,10 +30,17 @@
 - 成功: `{ ok: true }`
 - 備考: ホストのみ。ルームを削除（参加者も退出状態）
 
+## POST /functions/v1/sign-up
+- Body: `{ email: string, username: string, password: string }`
+- 成功: `{ user_id: uuid }`
+- 失敗: `409 { error: 'duplicate_username' | 'email_taken' }` / `400 { error: 'invalid_email' | 'weak_password' | ... }`
+- 備考: ユーザー名重複を事前チェックし、Auth 作成と profiles 追加を原子的に実行（失敗時は Auth ユーザーを削除）。認証不要
+
 ## DB 直接操作（RLS）
 - 回答投稿: `insert into guesses(room_id, round_id, member_id, content) values (...)`
   - `member_id` は `select my_member_id(:room_id)` で取得可能
   - 正解判定・ポイント付与はトリガで自動計算（最初+1、以降0）
+- 履歴保存: `game_sessions` / `game_participants` / `round_snapshots` はルームメンバー（user_id またはプロフィールのユーザー名一致）またはホストのみ書き込み可
 - 参加者離脱: `delete from room_members where id = :my_member_id`
   - ホストが離脱した場合、トリガでルーム自体が削除されます
 
