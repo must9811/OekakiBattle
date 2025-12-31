@@ -697,7 +697,14 @@ export default function RoomPage() {
         <section className='row' style={{ alignItems: 'flex-start' }}>
           <div className='card' style={{ flex: 1, minWidth: 320 }}>
             <h3>{amDrawer ? 'あなたは出題者です ✏️' : 'あなたは回答者です 💬'}</h3>
-            {amDrawer ? <p className='subtitle'>お題: <strong>{promptWord ?? '準備中…'}</strong></p> : <p className='subtitle'>お題の文字数: <strong>{promptLen}</strong>{' ／ カテゴリ: '}<strong>{promptCategory ?? '未設定'}</strong></p>}
+            {amDrawer ? (
+              <p className='subtitle'>
+                お題: <strong>{promptWord ?? '準備中…'}</strong>{' ／ カテゴリ: '}
+                <strong>{promptCategory ?? '未設定'}</strong>
+              </p>
+            ) : (
+              <p className='subtitle'>お題の文字数: <strong>{promptLen}</strong>{' ／ カテゴリ: '}<strong>{promptCategory ?? '未設定'}</strong></p>
+            )}
             <div className='canvasWrap' style={{ position: 'relative' }}>
               <CanvasBoard ref={canvasRef} key={activeRound?.id} roomId={room.id} enabled={amDrawer} channelName={channelName} />
               {overlayMsg && (
@@ -759,10 +766,13 @@ export default function RoomPage() {
                 {amDrawer ? (
                   <p className='subtitle'>あなたは出題者です。回答は入力できません。</p>
                 ) : (
-                  <div className='row'>
-                    <input className='input' value={guess} onChange={(e) => setGuess(e.target.value)} placeholder='回答を入力…' onKeyDown={(e) => { if (e.key === 'Enter') submitGuess() }} />
-                    <button className='button' onClick={submitGuess}>送信</button>
-                  </div>
+                  <>
+                    <p className='subtitle'>ひらがなで入力してね！</p>
+                    <div className='row'>
+                      <input className='input' value={guess} onChange={(e) => setGuess(e.target.value)} placeholder='回答を入力…' onKeyDown={(e) => { if (e.key === 'Enter') submitGuess() }} />
+                      <button className='button' onClick={submitGuess}>送信</button>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
