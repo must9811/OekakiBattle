@@ -27,7 +27,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
   const [isMobile, setIsMobile] = useState(false)
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [widthPickerOpen, setWidthPickerOpen] = useState(false)
-  const strokesRef = useRef<Array<{x1:number,y1:number,x2:number,y2:number,color:string,width:number}>>([])
+  const strokesRef = useRef<Array<{x1n:number,y1n:number,x2n:number,y2n:number,color:string,widthN:number}>>([])
   const strokeStartIdxRef = useRef<number[]>([])
 
   useImperativeHandle(ref, () => ({
@@ -69,6 +69,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     ctx.lineJoin = 'round'
     ctx.lineWidth = 3
     ctx.strokeStyle = '#222'
+    replay()
   }, [size])
 
   const drawSegment = (x1:number, y1:number, x2:number, y2:number, color='#222', width=3) => {
@@ -83,12 +84,26 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     ctx.stroke()
   }
 
+  const drawNormalizedStroke = (stroke: {x1n:number,y1n:number,x2n:number,y2n:number,color:string,widthN:number}) => {
+    const c = canvasRef.current
+    if (!c) return
+    const widthPx = Math.max(1, stroke.widthN * c.width)
+    drawSegment(
+      stroke.x1n * c.width,
+      stroke.y1n * c.height,
+      stroke.x2n * c.width,
+      stroke.y2n * c.height,
+      stroke.color,
+      widthPx
+    )
+  }
+
   const replay = () => {
     const c = canvasRef.current
     const ctx = c?.getContext('2d')
     if (!c || !ctx) return
     ctx.clearRect(0,0,c.width,c.height)
-    for (const s of strokesRef.current) drawSegment(s.x1,s.y1,s.x2,s.y2,s.color,s.width)
+    for (const s of strokesRef.current) drawNormalizedStroke(s)
   }
 
   const start = (x:number, y:number) => {
@@ -101,13 +116,19 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     if (!enabled) return
     if (!drawingRef.current) return
     const lp = lastPos.current || { x, y }
+    const c = canvasRef.current
+    if (!c) return
+    const widthPx = mode==='erase' ? Math.max(8, width) : width
     const stroke = {
-      x1: lp.x, y1: lp.y, x2: x, y2: y,
+      x1n: lp.x / c.width,
+      y1n: lp.y / c.height,
+      x2n: x / c.width,
+      y2n: y / c.height,
       color: mode==='erase' ? '#ffffff' : color,
-      width: mode==='erase' ? Math.max(8, width) : width,
+      widthN: widthPx / c.width,
     }
     strokesRef.current.push(stroke)
-    drawSegment(stroke.x1, stroke.y1, stroke.x2, stroke.y2, stroke.color, stroke.width)
+    drawNormalizedStroke(stroke)
     // broadcast stroke
     if (chanRef.current) {
       chanRef.current.send({ type: 'broadcast', event: 'stroke', payload: stroke })
@@ -135,9 +156,34 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     if (!channelName) return
     const ch = supabase.channel(channelName, { config: { broadcast: { self: true } } })
       .on('broadcast', { event: 'stroke' }, ({ payload }) => {
-        const { x1, y1, x2, y2, color, width } = payload as any
-        strokesRef.current.push({ x1,y1,x2,y2,color,width })
-        drawSegment(x1, y1, x2, y2, color, width)
+        const p = payload as any
+        if (typeof p?.x1n === 'number') {
+          const stroke = {
+            x1n: p.x1n,
+            y1n: p.y1n,
+            x2n: p.x2n,
+            y2n: p.y2n,
+            color: p.color,
+            widthN: p.widthN,
+          }
+          strokesRef.current.push(stroke)
+          drawNormalizedStroke(stroke)
+          return
+        }
+        if (typeof p?.x1 === 'number') {
+          const c = canvasRef.current
+          if (!c) return
+          const stroke = {
+            x1n: p.x1 / c.width,
+            y1n: p.y1 / c.height,
+            x2n: p.x2 / c.width,
+            y2n: p.y2 / c.height,
+            color: p.color,
+            widthN: p.width / c.width,
+          }
+          strokesRef.current.push(stroke)
+          drawNormalizedStroke(stroke)
+        }
       })
       .on('broadcast', { event: 'undo' }, ({ payload }) => {
         const count = Math.max(1, Number((payload as any)?.count ?? 1))
