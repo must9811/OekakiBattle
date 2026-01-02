@@ -41,6 +41,7 @@ export default function RoomPage() {
   const [overlayCountdown, setOverlayCountdown] = useState<number | null>(null)
   const [celebrate, setCelebrate] = useState(false)
   const [overlayVariant, setOverlayVariant] = useState<'correct' | 'timeout' | 'neutral'>('neutral')
+  const [mobileAnswerOpen, setMobileAnswerOpen] = useState(false)
   const roomIdRef = useRef<string | null>(null)
   const memberNameByIdRef = useRef<Record<string, string>>({})
   const [finishedAtLeastOnce, setFinishedAtLeastOnce] = useState(false)
@@ -859,33 +860,33 @@ export default function RoomPage() {
 
   return (
     <main className='container grid' style={{ gap: 16 }}>
-      <div className='panelHeader'>
+      <div className='panelHeader roomHeader'>
         <div>
           <div className='title'>部屋: {room.name}</div>
           <div className='subtitle'></div>
           <div className='hstack'><span className='badge'>あなたは {(drawerMemberId === memberId) ? '出題者' : '回答者'}</span></div>
         </div>
-        <div className='hstack'>
-          {!isHost && <button className='button ghost' onClick={leaveRoom}>部屋から退室する</button>}
+        <div className='hstack roomHeaderActions'>
+          {!isHost && <button className='button ghost roomActionButton' onClick={leaveRoom}>部屋から退室する</button>}
           {isHost && room.status === 'lobby' && (
             <>
-              <button className='button' onClick={startGame}>ゲーム開始</button>
-              <button className='button ghost' onClick={endGame}>部屋を破棄する</button>
+              <button className='button roomActionButton' onClick={startGame}>ゲーム開始</button>
+              <button className='button ghost roomActionButton' onClick={endGame}>部屋を破棄する</button>
             </>
           )}
-          {isHost && room.status === 'in_progress' && <button className='button' onClick={endGame}>ゲームを終了する</button>}
+          {isHost && room.status === 'in_progress' && <button className='button roomActionButton' onClick={endGame}>ゲームを終了する</button>}
           {isHost && isFinished && (
             <>
-              <button className='button' onClick={applySettingsAndReplay}>もう一度遊ぶ</button>
-              <button className='button ghost' onClick={endGame}>部屋を閉じる</button>
+              <button className='button roomActionButton' onClick={applySettingsAndReplay}>もう一度遊ぶ</button>
+              <button className='button ghost roomActionButton' onClick={endGame}>部屋を閉じる</button>
             </>
           )}
         </div>
       </div>
 
       {!isFinished && (
-        <section className='row' style={{ alignItems: 'flex-start' }}>
-          <div className='card' style={{ flex: 1, minWidth: 320 }}>
+        <section className='row roomLayout' style={{ alignItems: 'flex-start' }}>
+          <div className='card roomMain' style={{ flex: 1, minWidth: 320 }}>
             <h3>{amDrawer ? 'あなたは出題者です ✏️' : 'あなたは回答者です 💬'}</h3>
             {amDrawer ? (
               <p className='subtitle'>
@@ -941,7 +942,7 @@ export default function RoomPage() {
               </div>
             </div>
           </div>
-          <div className='card' style={{ width: 360 }}>
+          <div className='card roomSide' style={{ width: 360 }}>
             <div className='grid' style={{ gap: 8 }}>
               <div className='hstack'><span className='badge'>ラウンド</span><strong>{activeRound ? `${activeRound.number}/${room.rounds_total}` : '—'}</strong></div>
               <div className='hstack'><span className='badge'>残り時間</span><strong className='timer'>{timeLeft}s</strong></div>
@@ -958,10 +959,13 @@ export default function RoomPage() {
                 ) : (
                   <>
                     <p className='subtitle'>ひらがなで入力してね！</p>
-                    <div className='row'>
+                    <div className='row answerRow answerInline' aria-hidden={mobileAnswerOpen}>
                       <input className='input' value={guess} onChange={(e) => setGuess(e.target.value)} placeholder='回答を入力…' onKeyDown={(e) => { if (e.key === 'Enter') submitGuess() }} />
                       <button className='button' onClick={submitGuess}>送信</button>
                     </div>
+                    <button className='button answerOpen' type='button' onClick={() => setMobileAnswerOpen(true)}>
+                      回答を入力する
+                    </button>
                   </>
                 )}
               </div>
@@ -1047,6 +1051,30 @@ export default function RoomPage() {
           {messages.map((m, i) => (<li key={i}>{m}</li>))}
         </ul>
       </section>
+
+      {!amDrawer && mobileAnswerOpen && (
+        <div className='modalBackdrop' onClick={() => setMobileAnswerOpen(false)} role='presentation'>
+          <div className='modalCard card' onClick={(e) => e.stopPropagation()}>
+            <div className='panelHeader'>
+              <strong>回答を入力</strong>
+              <button className='button ghost' onClick={() => setMobileAnswerOpen(false)}>閉じる</button>
+            </div>
+            <div className='grid' style={{ gap: 10, marginTop: 12 }}>
+              <input
+                className='input'
+                autoFocus
+                value={guess}
+                onChange={(e) => setGuess(e.target.value)}
+                placeholder='回答を入力…'
+                onKeyDown={(e) => { if (e.key === 'Enter') { submitGuess(); setMobileAnswerOpen(false) } }}
+              />
+              <button className='button' onClick={() => { submitGuess(); setMobileAnswerOpen(false) }}>
+                送信
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

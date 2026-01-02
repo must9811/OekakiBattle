@@ -730,8 +730,8 @@ export default function HomePage() {
             )}
 
             {mode === "none" && (
-              <div className="row" style={{ gap: 12, justifyContent: "space-between" }}>
-                <div className="row" style={{ gap: 12 }}>
+              <div className="row homeHeaderActions" style={{ gap: 12, justifyContent: "space-between" }}>
+                <div className="row homeActions" style={{ gap: 12 }}>
                   <button className="button" onClick={() => setMode("create")}>部屋を作成する</button>
                   <button className="button" onClick={() => setMode("join")}>部屋に入室する</button>
                   <button
@@ -745,11 +745,11 @@ export default function HomePage() {
                   </button>
                 </div>
                 {!isLoggedIn ? (
-                  <button className="button ghost" onClick={() => setLoginMode("login")}>
+                  <button className="button ghost homeLogin" onClick={() => setLoginMode("login")}>
                     🔐 ログイン
                   </button>
                 ) : (
-                  <div className="row" style={{ gap: 8 }}>
+                  <div className="row homeUserActions" style={{ gap: 8 }}>
                     <div
                       className="userBadge clickable"
                       onClick={() => setSettingsOpen(true)}
