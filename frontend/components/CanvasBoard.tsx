@@ -24,6 +24,9 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
   const [color, setColor] = useState('#222222')
   const [width, setWidth] = useState(3)
   const [mode, setMode] = useState<'pen'|'erase'>('pen')
+  const [isMobile, setIsMobile] = useState(false)
+  const [colorPickerOpen, setColorPickerOpen] = useState(false)
+  const [widthPickerOpen, setWidthPickerOpen] = useState(false)
   const strokesRef = useRef<Array<{x1:number,y1:number,x2:number,y2:number,color:string,width:number}>>([])
   const strokeStartIdxRef = useRef<number[]>([])
 
@@ -39,13 +42,21 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
     const onResize = () => {
       const el = canvasRef.current?.parentElement
       if (!el) return
-      const w = Math.max(320, el.clientWidth)
-      const h = Math.max(240, Math.round(w * 2/3))
+      const w = Math.max(240, el.clientWidth)
+      const h = Math.max(200, Math.round(w * 2/3))
       setSize({ w, h })
     }
     onResize()
     window.addEventListener('resize', onResize)
     return ()=> window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 720px)')
+    const apply = () => setIsMobile(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
   }, [])
 
   useEffect(()=>{
@@ -178,7 +189,7 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
 
   return (
     <div className='canvas' style={{ position:'relative' }}>
-      {enabled && (
+      {enabled && !isMobile && (
         <div className='grid' style={{ gap:8, marginBottom:8 }}>
           <div className='row' style={{ gap:8, alignItems:'center' }}>
             <span style={{ fontWeight:700, color:'#111827' }}>ペンの色</span>
@@ -269,6 +280,66 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
           </div>
         </div>
       )}
+      {enabled && isMobile && (
+        <div className='row canvasMobileTools'>
+          <button
+            className='button ghost canvasMobileTool'
+            type='button'
+            onClick={() => setColorPickerOpen(true)}
+            aria-label='ペン色'
+          >
+            <span className='canvasMobileLabel'>色</span>
+            <span
+              aria-hidden
+              style={{
+                width:24,
+                height:24,
+                borderRadius:8,
+                border: '1px solid rgba(15,23,42,.15)',
+                background: color,
+                boxShadow: color === '#ffffff' ? 'inset 0 0 0 1px rgba(0,0,0,.15)' : 'none'
+              }}
+            />
+          </button>
+          <button
+            className='button ghost canvasMobileTool'
+            type='button'
+            onClick={() => setWidthPickerOpen(true)}
+            aria-label='太さ'
+          >
+            <span className='canvasMobileLabel'>太さ</span>
+            <span
+              aria-hidden
+              style={{
+                width:Math.round(4 + width * 1.2),
+                height:Math.round(4 + width * 1.2),
+                borderRadius:999,
+                background:'#111827',
+                display:'block'
+              }}
+            />
+          </button>
+          <button
+            className='button ghost'
+            aria-label='消しゴム'
+            onClick={() => setMode(mode === 'erase' ? 'pen' : 'erase')}
+            style={{
+              width:40,
+              height:40,
+              padding:0,
+              borderRadius:10,
+              borderColor: mode === 'erase' ? 'rgba(15,118,110,.6)' : 'rgba(15,23,42,.15)',
+              background: mode === 'erase' ? 'rgba(15,118,110,.12)' : 'transparent'
+            }}
+          >
+            <svg width='18' height='18' viewBox='0 0 24 24' fill='none' stroke={mode === 'erase' ? '#0f766e' : '#475569'} strokeWidth='2' strokeLinecap='round' strokeLinejoin='round' aria-hidden>
+              <path d='M20 20H9l-5-5a2.5 2.5 0 0 1 0-3.5l7-7a2.5 2.5 0 0 1 3.5 0l5.5 5.5a2.5 2.5 0 0 1 0 3.5L14 20z' />
+              <path d='M6 13l5 5' />
+            </svg>
+          </button>
+          <button className='button canvasMobileClear' onClick={onClear}>クリア</button>
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         width={size.w}
@@ -281,6 +352,84 @@ const CanvasBoard = forwardRef<CanvasBoardHandle, Props>(function CanvasBoard(
       />
       {!enabled && (
         <div style={{ position:'absolute', inset:0, background:'transparent' }} aria-hidden />
+      )}
+
+      {enabled && isMobile && colorPickerOpen && (
+        <div className='modalBackdrop' onClick={() => setColorPickerOpen(false)} role='presentation'>
+          <div className='modalCard card' onClick={(e) => e.stopPropagation()}>
+            <div className='panelHeader'>
+              <strong>ペンの色</strong>
+              <button className='button ghost' onClick={() => setColorPickerOpen(false)}>閉じる</button>
+            </div>
+            <div className='grid' style={{ gap:10, marginTop:12 }}>
+              <div className='row' style={{ gap:8, flexWrap:'wrap' }}>
+                {palette.map((c) => (
+                  <button
+                    key={c}
+                    type='button'
+                    className='button ghost'
+                    aria-label={`色 ${c}`}
+                    onClick={() => { setColor(c); setColorPickerOpen(false) }}
+                    style={{
+                      width:36,
+                      height:36,
+                      padding:0,
+                      borderRadius:8,
+                      border: color === c ? '2px solid #111827' : '1px solid rgba(15,23,42,.15)',
+                      background: c,
+                      boxShadow: c === '#ffffff' ? 'inset 0 0 0 1px rgba(0,0,0,.15)' : 'none'
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {enabled && isMobile && widthPickerOpen && (
+        <div className='modalBackdrop' onClick={() => setWidthPickerOpen(false)} role='presentation'>
+          <div className='modalCard card' onClick={(e) => e.stopPropagation()}>
+            <div className='panelHeader'>
+              <strong>ペンの太さ</strong>
+              <button className='button ghost' onClick={() => setWidthPickerOpen(false)}>閉じる</button>
+            </div>
+            <div className='grid' style={{ gap:10, marginTop:12 }}>
+              <div className='row' style={{ gap:10, flexWrap:'wrap' }}>
+                {widths.map((w) => {
+                  const size = Math.round(6 + w * 1.4)
+                  return (
+                    <button
+                      key={w}
+                      type='button'
+                      className='button ghost'
+                      aria-label={`太さ ${w}`}
+                      onClick={() => { setWidth(w); setWidthPickerOpen(false) }}
+                      style={{
+                        width:44,
+                        height:44,
+                        padding:0,
+                        borderRadius:12,
+                        borderColor: width === w ? 'rgba(15,118,110,.6)' : 'rgba(15,23,42,.15)',
+                        background: width === w ? 'rgba(15,118,110,.08)' : 'transparent',
+                        display:'grid',
+                        placeItems:'center'
+                      }}
+                    >
+                      <span style={{
+                        width:size,
+                        height:size,
+                        borderRadius:999,
+                        background:'#111827',
+                        display:'block'
+                      }} />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
