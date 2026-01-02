@@ -42,6 +42,7 @@ export default function RoomPage() {
   const [celebrate, setCelebrate] = useState(false)
   const [overlayVariant, setOverlayVariant] = useState<'correct' | 'timeout' | 'neutral'>('neutral')
   const [mobileAnswerOpen, setMobileAnswerOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const roomIdRef = useRef<string | null>(null)
   const memberNameByIdRef = useRef<Record<string, string>>({})
   const [finishedAtLeastOnce, setFinishedAtLeastOnce] = useState(false)
@@ -585,6 +586,14 @@ export default function RoomPage() {
   }
   useEffect(() => { return () => { if (timerRef.current) window.clearInterval(timerRef.current) } }, [])
 
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 720px)')
+    const apply = () => setIsMobile(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+
   const channelName = useMemo(() => room ? `room:${room.id}` : 'room:unknown', [room?.id])
 
   async function startGame() {
@@ -941,18 +950,8 @@ export default function RoomPage() {
                 ))}
               </div>
             </div>
-          </div>
-          <div className='card roomSide' style={{ width: 360 }}>
-            <div className='grid' style={{ gap: 8 }}>
-              <div className='hstack'><span className='badge'>ラウンド</span><strong>{activeRound ? `${activeRound.number}/${room.rounds_total}` : '—'}</strong></div>
-              <div className='hstack'><span className='badge'>残り時間</span><strong className='timer'>{timeLeft}s</strong></div>
-              <div>
-                <h4>参加者</h4>
-                <ul>
-                  {members.map(m => <li key={m.id as any}>{m.username}{(m as any).id === drawerMemberId ? ' ✏️' : ''}{m.is_host ? ' (ホスト)' : ''} {typeof (scores as any)[(m as any).id] === 'number' ? ` — ${scores[(m as any).id]}点` : ''}</li>)}
-                </ul>
-              </div>
-              <div>
+            {isMobile && (
+              <div style={{ marginTop: 12 }}>
                 <h4>回答</h4>
                 {amDrawer ? (
                   <p className='subtitle'>あなたは出題者です。回答は入力できません。</p>
@@ -969,6 +968,34 @@ export default function RoomPage() {
                   </>
                 )}
               </div>
+            )}
+          </div>
+          <div className='card roomSide' style={{ width: 360 }}>
+            <div className='grid' style={{ gap: 8 }}>
+              <div className='hstack'><span className='badge'>ラウンド</span><strong>{activeRound ? `${activeRound.number}/${room.rounds_total}` : '—'}</strong></div>
+              <div className='hstack'><span className='badge'>残り時間</span><strong className='timer'>{timeLeft}s</strong></div>
+              <div>
+                <h4>参加者</h4>
+                <ul>
+                  {members.map(m => <li key={m.id as any}>{m.username}{(m as any).id === drawerMemberId ? ' ✏️' : ''}{m.is_host ? ' (ホスト)' : ''} {typeof (scores as any)[(m as any).id] === 'number' ? ` — ${scores[(m as any).id]}点` : ''}</li>)}
+                </ul>
+              </div>
+              {!isMobile && (
+                <div>
+                  <h4>回答</h4>
+                  {amDrawer ? (
+                    <p className='subtitle'>あなたは出題者です。回答は入力できません。</p>
+                  ) : (
+                    <>
+                      <p className='subtitle'>ひらがなで入力してね！</p>
+                      <div className='row answerRow answerInline' aria-hidden={mobileAnswerOpen}>
+                        <input className='input' value={guess} onChange={(e) => setGuess(e.target.value)} placeholder='回答を入力…' onKeyDown={(e) => { if (e.key === 'Enter') submitGuess() }} />
+                        <button className='button' onClick={submitGuess}>送信</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </section>
